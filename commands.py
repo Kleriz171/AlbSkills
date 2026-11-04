@@ -118,6 +118,28 @@ def lesion_block(atlas, typed_name):
     print(f'Expected symptoms ({len(result.symptoms)}): {", ".join(result.symptoms)}')
 
 
+def lesion_risk(atlas, typed_name):
+    """Mission 2, Goal 2: which single blocked pipes would stop this area?"""
+    if atlas.get_pipe(typed_name) and not atlas.get_area(typed_name):
+        raise ValueError(f'"{typed_name}" is a pipe, not an area. Usage: lesion risk <area>')
+    area = atlas.get_area(typed_name)
+    if area is None:
+        raise ValueError(f'No area called "{typed_name}".')
+
+    risky = lesion.risky_pipes(atlas, area)
+    if not risky:
+        print(f'No single blocked pipe can stop {area.name}.')
+        return
+
+    if len(risky) == 1:
+        print(f'1 pipe stops {area.name} if blocked:')
+    else:
+        print(f'{len(risky)} pipes stop {area.name} if blocked:')
+    width = max(len(pipe.name) for pipe in risky)
+    for pipe in risky:
+        print(f'  {pipe.name.ljust(width)}  {pipe.size}')
+
+
 def find(atlas, word):
     matches = atlas.find_areas(word)
     if not matches:

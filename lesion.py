@@ -34,6 +34,24 @@ def pipes_with_blood(atlas, blocked_names):
     return reachable(atlas.find_heart().name, edges)
 
 
+def risky_pipes(atlas, area):
+    """Mission 2, Goal 2: every pipe that, if it ALONE were blocked, would stop this area.
+
+    We do not write any new blood rule here. For each pipe we simply ask the
+    engine (simulate) "what happens if this pipe is blocked?" and see whether
+    the area is among the ones that stop. That is why 'lesion risk' and
+    'lesion block' can never disagree."""
+    heart = atlas.find_heart()
+    risky = []
+    for pipe in atlas.pipes.values():          # file order
+        if pipe is heart:
+            continue                           # rule 1: the heart can never be blocked
+        result = simulate(atlas, [pipe])
+        if area in result.dead_areas:
+            risky.append(pipe)
+    return risky
+
+
 def simulate(atlas, blocked_pipes):
     """Block these pipes (a list of Pipe objects) and work out what happens."""
     blocked_names = {pipe.name for pipe in blocked_pipes}

@@ -4,7 +4,7 @@ import commands
 from loader import AtlasError, load_atlas
 
 DEFAULT_ATLAS = 'data/atlas.txt'
-LESION_USAGE = 'Usage: lesion block <pipe>'
+LESION_USAGE = 'Usage: lesion block <pipe> | risk <area>'
 ATLAS_USAGE ='Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
 
 
@@ -70,15 +70,20 @@ def lesion_command(state, args):
     if not args:
         raise ValueError(f'Missing subcommand. {LESION_USAGE}')
     sub, rest = args[0], args[1:]
-    if sub != 'block':
+    if sub not in ('block', 'risk'):
         raise ValueError(f'Unknown lesion command "{sub}". {LESION_USAGE}')
     atlas = state['atlas']
     if atlas is None:
         raise ValueError('No atlas is loaded. Use: atlas load <path>')
 
-    if not rest:
-        raise ValueError('Missing pipe. Usage: lesion block <pipe>')
-    commands.lesion_block(atlas, ' '.join(rest))
+    if sub == 'block':
+        if not rest:
+            raise ValueError('Missing pipe. Usage: lesion block <pipe>')
+        commands.lesion_block(atlas, ' '.join(rest))
+    else:
+        if not rest:
+            raise ValueError('Missing area. Usage: lesion risk <area>')
+        commands.lesion_risk(atlas, ' '.join(rest))
 
 
 def main():
@@ -99,7 +104,7 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  help\n  exit')
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  help\n  exit')
         elif words[0] in ('atlas', 'lesion'):
             handler = atlas_command if words[0] == 'atlas' else lesion_command
             try:
