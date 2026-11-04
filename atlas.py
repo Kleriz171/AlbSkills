@@ -57,6 +57,24 @@ class Atlas:
             for pipe_name in area.fed_by:
                 self.pipes[pipe_name].areas.append(area)
 
+    def routes_to(self, area):
+        """Bonus 2: every route blood can take from the heart to this area.
+        Returns a list of routes; each route is a list of pipe names, heart first."""
+        routes = []
+        for pipe_name in area.fed_by:
+            self.climb(self.pipes[pipe_name], [], routes)
+        return routes
+
+    def climb(self, pipe, tail, routes):
+        """Walk UP from a pipe towards the heart. 'tail' is the part of the route
+        we have already walked (the pipes below this one, down to the area)."""
+        route = [pipe.name] + tail                  # put this pipe in front of the tail
+        if pipe.comes_from == [HEART]:
+            routes.append(route)                    # reached the heart: the route is complete
+            return
+        for parent_name in pipe.comes_from:         # a pipe may have several parents
+            self.climb(self.pipes[parent_name], route, routes)
+
     def find_heart(self):
         """The one pipe that comes from '-'. (Goal 3 already checked there is exactly one.)"""
         for pipe in self.pipes.values():

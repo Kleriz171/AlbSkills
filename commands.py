@@ -78,6 +78,19 @@ def print_area(area, depth, seen):
     print(f'{indent}[{area.name}]')
 
 
+def show_paths(atlas, name):
+    """Bonus 2: print every route from the heart to an area."""
+    if name not in atlas.areas:
+        raise ValueError(f'No area called "{name}".')
+    area = atlas.areas[name]
+    routes = atlas.routes_to(area)
+
+    noun = 'route' if len(routes) == 1 else 'routes'
+    print(f'{len(routes)} {noun} from the heart to {area.name}:')
+    for route in routes:
+        print('   ' + ' > '.join(route + [area.name]))
+
+
 def find(atlas, word):
     matches = atlas.find_areas(word)
     if not matches:
