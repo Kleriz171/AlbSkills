@@ -6,7 +6,7 @@ from graph import find_loops, describe_loop, reachable
 
 # Rules live here, in one place, so a changed rule is a one-line change.
 PIPE_SIZES = ('big', 'small')
-FIELD_COUNTS = {'PIPE': 4, 'AREA': 5}      # how many fields each record type needs
+FIELD_COUNTS = {'PIPE': 4, 'AREA': 5, 'BRIDGE': 3}      # how many fields each record type needs
 
 
 class AtlasError(Exception):
@@ -81,7 +81,7 @@ def build_objects(records, filename, errors):
 
         if record_type not in FIELD_COUNTS:
             errors.append((lineno, f'{where}: unknown record type "{record_type}". '
-                                   f'Expected PIPE or AREA.'))
+                                   f'Expected PIPE, AREA or BRIDGE.'))
             if len(parts) > 1 and parts[1]:
                 declared_pipes.add(parts[1])      # probably a typo'd pipe: avoid false errors
             continue
@@ -90,6 +90,10 @@ def build_objects(records, filename, errors):
         if len(parts) != FIELD_COUNTS[record_type]:
             errors.append((lineno, f'{where}: {record_type} needs '
                                    f'{FIELD_COUNTS[record_type]} fields, found {len(parts)}.'))
+            continue
+
+        if record_type == 'BRIDGE':               # a bridge has no name of its own
+            atlas.add_bridge(parts[1], parts[2], lineno)
             continue
 
         name = parts[1]
@@ -125,6 +129,14 @@ def check_references(atlas, declared_pipes, filename, errors):
             if feeder not in declared_pipes:
                 errors.append((area.line, f'{filename}, line {area.line}: area "{area.name}" '
                                           f'is fed by "{feeder}", which does not exist.'))
+    for bridge in atlas.bridges:
+        where = f'{filename}, line {bridge.line}'
+        for name in (bridge.first, bridge.second):
+            if name not in declared_pipes:
+                errors.append((bridge.line, f'{where}: bridge joins "{name}", '
+                                            f'which does not exist.'))
+        if bridge.first == bridge.second:
+            errors.append((bridge.line, f'{where}: bridge joins "{bridge.first}" to itself.'))
 
 
 def check_heart(atlas, errors):
@@ -143,7 +155,8 @@ def deep_checks(atlas, errors):
     for loop in find_loops(parents):
         errors.append((None, 'Loop: ' + describe_loop(loop)))
 
-    edges = {p.name: [branch.name for branch in p.branches] for p in atlas.pipes.values()}
+    # blood can also cross a bridge, so a bridge counts as a way to reach a pipe
+    edges = {p.name: [q.name for q in p.branches + p.bridged_to] for p in atlas.pipes.values()}
     reached = reachable(atlas.find_heart().name, edges)
     for pipe in atlas.pipes.values():
         if pipe.name not in reached:

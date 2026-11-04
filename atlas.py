@@ -11,6 +11,8 @@ class Pipe:
         self.line = line                # line number in the file
         self.branches = []              # pipes that come OUT of this pipe (filled by link)
         self.areas = []                 # areas this pipe feeds (filled by link)
+        self.parents = []               # the Pipe objects it comes from (filled by link)
+        self.bridged_to = []            # pipes joined to this one by a bridge (filled by link)
 
 
 class Area:
@@ -32,16 +34,32 @@ class Area:
         return False
 
 
+class Bridge:
+    """Mission 2, Bonus 2: a short pipe joining two pipes. Blood crosses it BOTH ways."""
+
+    def __init__(self, first, second, line):
+        self.first = first              # pipe names, as written in the file
+        self.second = second
+        self.line = line
+
+
 class Atlas:
     def __init__(self):
         self.pipes = {}                 # pipe name -> Pipe object
         self.areas = {}                 # area name -> Area object
+        self.bridges = []               # Bridge objects (empty for a plain atlas)
 
     def add_pipe(self, pipe):
         self.pipes[pipe.name] = pipe
 
     def add_area(self, area):
         self.areas[area.name] = area
+
+    def add_bridge(self, first, second, line):
+        for bridge in self.bridges:             # the same bridge written twice counts once
+            if {bridge.first, bridge.second} == {first, second}:
+                return
+        self.bridges.append(Bridge(first, second, line))
 
     def link(self):
         """The file only says where a pipe comes FROM.
@@ -52,10 +70,16 @@ class Atlas:
                 if parent_name != HEART:
                     parent = self.pipes[parent_name]
                     parent.branches.append(pipe)
+                    pipe.parents.append(parent)
 
         for area in self.areas.values():
             for pipe_name in area.fed_by:
                 self.pipes[pipe_name].areas.append(area)
+
+        for bridge in self.bridges:             # a bridge works in both directions
+            first, second = self.pipes[bridge.first], self.pipes[bridge.second]
+            first.bridged_to.append(second)
+            second.bridged_to.append(first)
 
     def routes_to(self, area):
         """Bonus 2: every route blood can take from the heart to this area.

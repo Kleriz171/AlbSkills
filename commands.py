@@ -42,6 +42,8 @@ def show_one(atlas, name):
         print(f'Comes from:     {", ".join(pipe.comes_from)}')
         print(f'Branches into:  {names(pipe.branches)}')
         print(f'Feeds areas:    {names(pipe.areas) if pipe.areas else "none directly"}')
+        if pipe.bridged_to:
+            print(f'Bridged to:     {names(pipe.bridged_to)}')
     elif name in atlas.areas:
         area = atlas.areas[name]
         print(f'Area: {area.name}')
@@ -52,33 +54,62 @@ def show_one(atlas, name):
         raise ValueError(f'No pipe or area called "{name}".')
 
 
+def tree_lines(atlas, indent_size, mark_pipe=None, mark_area=None):
+    """Draw the atlas as an indented tree that starts at the heart.
+    Returns a list of (text, mark) pairs. 'mark' is an optional note for the
+    right-hand side (used by lesion tree); show_tree ignores it."""
+    lines = []
+    seen = set()                       # names already written in full
+
+    def add_pipe(pipe, depth):
+        indent = ' ' * indent_size * depth
+        if pipe.name in seen:
+            lines.append((f'{indent}{pipe.name} (see above)', ''))
+            return                     # do NOT repeat its children
+        seen.add(pipe.name)
+        lines.append((f'{indent}{pipe.name}', mark_pipe(pipe) if mark_pipe else ''))
+        for branch in pipe.branches:   # the pipes that come out of this pipe
+            add_pipe(branch, depth + 1)
+        for area in pipe.areas:        # the areas this pipe feeds
+            add_area(area, depth + 1)
+
+    def add_area(area, depth):
+        indent = ' ' * indent_size * depth
+        if area.name in seen:
+            lines.append((f'{indent}[{area.name}] (see above)', ''))
+            return
+        seen.add(area.name)
+        lines.append((f'{indent}[{area.name}]', mark_area(area) if mark_area else ''))
+
+    add_pipe(atlas.find_heart(), 0)
+    return lines
+
+
 def show_tree(atlas):
-    """Bonus 1: draw the atlas as an indented tree that starts at the heart."""
-    seen = set()                       # names already printed in full
-    print_pipe(atlas.find_heart(), 0, seen)
+    """Mission 1, Bonus 1: atlas tree."""
+    for text, _ in tree_lines(atlas, 4):
+        print(text)
 
 
-def print_pipe(pipe, depth, seen):
-    indent = '    ' * depth            # 4 spaces for every level down
-    if pipe.name in seen:
-        print(f'{indent}{pipe.name} (see above)')
-        return                         # do NOT print its children a second time
-    seen.add(pipe.name)
-    print(f'{indent}{pipe.name}')
+def lesion_tree(atlas, typed_text):
+    """Mission 2, Bonus 3: the tree, marking what the blocked pipe(s) affect."""
+    pipes = pipes_to_block(atlas, typed_text, 'lesion tree <pipe>')
+    result = lesion.simulate(atlas, pipes)
+    dry = {pipe.name for pipe in result.dry_pipes}
+    dead = {area.name for area in result.dead_areas}
 
-    for branch in pipe.branches:       # the pipes that come out of this pipe
-        print_pipe(branch, depth + 1, seen)
-    for area in pipe.areas:            # the areas this pipe feeds
-        print_area(area, depth + 1, seen)
+    def mark_pipe(pipe):
+        if pipe in pipes:
+            return 'BLOCKED'
+        return 'no blood' if pipe.name in dry else ''
 
+    def mark_area(area):
+        return 'stops working' if area.name in dead else ''
 
-def print_area(area, depth, seen):
-    indent = '    ' * depth
-    if area.name in seen:
-        print(f'{indent}[{area.name}] (see above)')
-        return
-    seen.add(area.name)
-    print(f'{indent}[{area.name}]')
+    lines = tree_lines(atlas, 2, mark_pipe, mark_area)
+    width = max(len(text) for text, _ in lines) + 2       # one column for all the marks
+    for text, mark in lines:
+        print(f'{text.ljust(width)}{mark}'.rstrip())
 
 
 def show_paths(atlas, name):
@@ -106,18 +137,22 @@ def pipe_to_block(atlas, typed_name):
     return pipe
 
 
-def lesion_block(atlas, typed_text):
-    """Mission 2: block one pipe, or several separated by commas, and print the result."""
+def pipes_to_block(atlas, typed_text, usage):
+    """Turn 'a, b' into a list of Pipe objects. Every name is checked first."""
     typed_names = [name.strip() for name in typed_text.split(',') if name.strip()]
     if not typed_names:
-        raise ValueError('Missing pipe. Usage: lesion block <pipe>')
-
-    pipes = []                                    # check EVERY name before simulating anything
+        raise ValueError(f'Missing pipe. Usage: {usage}')
+    pipes = []
     for typed_name in typed_names:
         pipe = pipe_to_block(atlas, typed_name)
         if pipe not in pipes:                     # "a, a" blocks the pipe once
             pipes.append(pipe)
+    return pipes
 
+
+def lesion_block(atlas, typed_text):
+    """Mission 2: block one pipe, or several separated by commas, and print the result."""
+    pipes = pipes_to_block(atlas, typed_text, 'lesion block <pipe>')
     result = lesion.simulate(atlas, pipes)
 
     if len(pipes) == 1:
@@ -128,16 +163,20 @@ def lesion_block(atlas, typed_text):
 
     if not result.dead_areas:
         print('Areas that stop working (0): none')
-        return
-    if len(pipes) == 1:                           # one pipe: a table with descriptions
-        print(f'Areas that stop working ({len(result.dead_areas)}):')
-        width = max(len(area.name) for area in result.dead_areas)
-        for area in result.dead_areas:
-            print(f'  {area.name.ljust(width)}  {area.description}')
-    else:                                         # several pipes: one line, as in the PDF
-        print(f'Areas that stop working ({len(result.dead_areas)}): '
-              f'{names(result.dead_areas)}')
-    print(f'Expected symptoms ({len(result.symptoms)}): {", ".join(result.symptoms)}')
+    else:
+        if len(pipes) == 1:                       # one pipe: a table with descriptions
+            print(f'Areas that stop working ({len(result.dead_areas)}):')
+            width = max(len(area.name) for area in result.dead_areas)
+            for area in result.dead_areas:
+                print(f'  {area.name.ljust(width)}  {area.description}')
+        else:                                     # several pipes: one line, as in the PDF
+            print(f'Areas that stop working ({len(result.dead_areas)}): '
+                  f'{names(result.dead_areas)}')
+        print(f'Expected symptoms ({len(result.symptoms)}): {", ".join(result.symptoms)}')
+
+    if result.saved:                              # Bonus 2: pipes a bridge kept alive
+        parts = [f'{pipe.name} (from {names(givers)})' for pipe, givers in result.saved]
+        print(f'Saved by a bridge: {", ".join(parts)}')
 
 
 def lesion_risk(atlas, typed_name):
