@@ -4,7 +4,7 @@ import commands
 from loader import load_atlas
 
 DEFAULT_ATLAS = 'data/atlas.txt'
-ATLAS_USAGE = 'Usage: atlas load <path> | pipes | areas | show <name> | find <word>'
+ATLAS_USAGE = 'Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree'
 
 
 def load_command(state, path):
@@ -37,7 +37,7 @@ def atlas_command(state, args):
         load_command(state, ' '.join(rest))
         return
 
-    if sub not in ('pipes', 'areas', 'show', 'find'):
+    if sub not in ('pipes', 'areas', 'show', 'find', 'tree'):
         raise ValueError(f'Unknown atlas command "{sub}". {ATLAS_USAGE}')
     atlas = state['atlas']
     if atlas is None:
@@ -47,6 +47,8 @@ def atlas_command(state, args):
         commands.show_pipes(atlas)
     elif sub == 'areas':
         commands.show_areas(atlas)
+    elif sub == 'tree':
+        commands.show_tree(atlas)
     elif sub == 'show':
         if not rest:
             raise ValueError('Missing name. Usage: atlas show <name>')
@@ -75,7 +77,7 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  help\n  exit')
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  help\n  exit')
         elif words[0] == 'atlas':
             try:
                 atlas_command(state, words[1:])

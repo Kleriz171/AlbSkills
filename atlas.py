@@ -57,6 +57,12 @@ class Atlas:
             for pipe_name in area.fed_by:
                 self.pipes[pipe_name].areas.append(area)
 
+    def find_heart(self):
+        """The one pipe that comes from '-'. (Goal 3 already checked there is exactly one.)"""
+        for pipe in self.pipes.values():
+            if pipe.comes_from == [HEART]:
+                return pipe
+
     def find_areas(self, word):
         """Goal 4: every area that matches the word, in file order."""
         return [area for area in self.areas.values() if area.matches(word)]

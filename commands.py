@@ -49,6 +49,35 @@ def show_one(atlas, name):
         raise ValueError(f'No pipe or area called "{name}".')
 
 
+def show_tree(atlas):
+    """Bonus 1: draw the atlas as an indented tree that starts at the heart."""
+    seen = set()                       # names already printed in full
+    print_pipe(atlas.find_heart(), 0, seen)
+
+
+def print_pipe(pipe, depth, seen):
+    indent = '    ' * depth            # 4 spaces for every level down
+    if pipe.name in seen:
+        print(f'{indent}{pipe.name} (see above)')
+        return                         # do NOT print its children a second time
+    seen.add(pipe.name)
+    print(f'{indent}{pipe.name}')
+
+    for branch in pipe.branches:       # the pipes that come out of this pipe
+        print_pipe(branch, depth + 1, seen)
+    for area in pipe.areas:            # the areas this pipe feeds
+        print_area(area, depth + 1, seen)
+
+
+def print_area(area, depth, seen):
+    indent = '    ' * depth
+    if area.name in seen:
+        print(f'{indent}[{area.name}] (see above)')
+        return
+    seen.add(area.name)
+    print(f'{indent}[{area.name}]')
+
+
 def find(atlas, word):
     matches = atlas.find_areas(word)
     if not matches:
