@@ -4,7 +4,7 @@ import commands
 from loader import AtlasError, load_atlas
 
 DEFAULT_ATLAS = 'data/atlas.txt'
-LESION_USAGE = 'Usage: lesion block <pipe> | risk <area>'
+LESION_USAGE = 'Usage: lesion block <pipe>[, <pipe>...] | risk <area>'
 ATLAS_USAGE ='Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
 
 

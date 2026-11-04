@@ -94,8 +94,8 @@ def show_paths(atlas, name):
         print('   ' + ' > '.join(route + [area.name]))
 
 
-def lesion_block(atlas, typed_name):
-    """Mission 2, Goal 1: block one pipe and print what stops working."""
+def pipe_to_block(atlas, typed_name):
+    """Check one typed name and return the Pipe, or raise a clear error."""
     if atlas.get_area(typed_name) and not atlas.get_pipe(typed_name):
         raise ValueError(f'"{typed_name}" is an area, not a pipe. Only pipes can be blocked.')
     pipe = atlas.get_pipe(typed_name)
@@ -103,18 +103,40 @@ def lesion_block(atlas, typed_name):
         raise ValueError(f'No pipe called "{typed_name}".')
     if pipe is atlas.find_heart():
         raise ValueError('The heart cannot be blocked.')
+    return pipe
 
-    result = lesion.simulate(atlas, [pipe])
 
-    print(f'Blocked pipe: {pipe.name} ({pipe.size})')
+def lesion_block(atlas, typed_text):
+    """Mission 2: block one pipe, or several separated by commas, and print the result."""
+    typed_names = [name.strip() for name in typed_text.split(',') if name.strip()]
+    if not typed_names:
+        raise ValueError('Missing pipe. Usage: lesion block <pipe>')
+
+    pipes = []                                    # check EVERY name before simulating anything
+    for typed_name in typed_names:
+        pipe = pipe_to_block(atlas, typed_name)
+        if pipe not in pipes:                     # "a, a" blocks the pipe once
+            pipes.append(pipe)
+
+    result = lesion.simulate(atlas, pipes)
+
+    if len(pipes) == 1:
+        print(f'Blocked pipe: {pipes[0].name} ({pipes[0].size})')
+    else:
+        print(f'Blocked pipes: {names(pipes)}')
     print(f'Pipes without blood ({len(result.dry_pipes)}): {names(result.dry_pipes)}')
+
     if not result.dead_areas:
         print('Areas that stop working (0): none')
         return
-    print(f'Areas that stop working ({len(result.dead_areas)}):')
-    width = max(len(area.name) for area in result.dead_areas)
-    for area in result.dead_areas:
-        print(f'  {area.name.ljust(width)}  {area.description}')
+    if len(pipes) == 1:                           # one pipe: a table with descriptions
+        print(f'Areas that stop working ({len(result.dead_areas)}):')
+        width = max(len(area.name) for area in result.dead_areas)
+        for area in result.dead_areas:
+            print(f'  {area.name.ljust(width)}  {area.description}')
+    else:                                         # several pipes: one line, as in the PDF
+        print(f'Areas that stop working ({len(result.dead_areas)}): '
+              f'{names(result.dead_areas)}')
     print(f'Expected symptoms ({len(result.symptoms)}): {", ".join(result.symptoms)}')
 
 
