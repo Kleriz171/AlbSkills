@@ -1,7 +1,7 @@
 """Synapse: the program you start. Commands: atlas load / pipes / areas / show / find."""
 
 import commands
-from loader import load_atlas
+from loader import AtlasError, load_atlas
 
 DEFAULT_ATLAS = 'data/atlas.txt'
 ATLAS_USAGE = 'Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
@@ -11,8 +11,9 @@ def load_command(state, path):
     """Try to load an atlas. If anything is wrong, keep the old one (all or nothing)."""
     try:
         atlas = load_atlas(path)
-    except ValueError as error:
-        print(f'ERROR: {error}')
+    except AtlasError as error:
+        for message in error.messages:            # report EVERY problem, one per line
+            print(f'ERROR: {message}')
         if state['path']:
             print(f'Atlas not loaded. Still using {state["path"]}.')
         else:
