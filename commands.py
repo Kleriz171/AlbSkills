@@ -5,6 +5,9 @@ A user mistake raises ValueError; synapse.py prints it as "ERROR: ...".
 """
 
 
+import lesion
+
+
 def print_table(header, rows):
     """Print rows in aligned columns. Each column is as wide as its longest cell."""
     all_rows = [header] + rows
@@ -89,6 +92,30 @@ def show_paths(atlas, name):
     print(f'{len(routes)} {noun} from the heart to {area.name}:')
     for route in routes:
         print('   ' + ' > '.join(route + [area.name]))
+
+
+def lesion_block(atlas, typed_name):
+    """Mission 2, Goal 1: block one pipe and print what stops working."""
+    if atlas.get_area(typed_name) and not atlas.get_pipe(typed_name):
+        raise ValueError(f'"{typed_name}" is an area, not a pipe. Only pipes can be blocked.')
+    pipe = atlas.get_pipe(typed_name)
+    if pipe is None:
+        raise ValueError(f'No pipe called "{typed_name}".')
+    if pipe is atlas.find_heart():
+        raise ValueError('The heart cannot be blocked.')
+
+    result = lesion.simulate(atlas, [pipe])
+
+    print(f'Blocked pipe: {pipe.name} ({pipe.size})')
+    print(f'Pipes without blood ({len(result.dry_pipes)}): {names(result.dry_pipes)}')
+    if not result.dead_areas:
+        print('Areas that stop working (0): none')
+        return
+    print(f'Areas that stop working ({len(result.dead_areas)}):')
+    width = max(len(area.name) for area in result.dead_areas)
+    for area in result.dead_areas:
+        print(f'  {area.name.ljust(width)}  {area.description}')
+    print(f'Expected symptoms ({len(result.symptoms)}): {", ".join(result.symptoms)}')
 
 
 def find(atlas, word):

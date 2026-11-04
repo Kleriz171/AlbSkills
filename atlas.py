@@ -75,6 +75,20 @@ class Atlas:
         for parent_name in pipe.comes_from:         # a pipe may have several parents
             self.climb(self.pipes[parent_name], route, routes)
 
+    def get_pipe(self, name):
+        """Find a pipe by name, ignoring upper/lower case. None if there is no such pipe."""
+        return self.lookup(self.pipes, name)
+
+    def get_area(self, name):
+        """Find an area by name, ignoring upper/lower case. None if there is no such area."""
+        return self.lookup(self.areas, name)
+
+    def lookup(self, items, name):
+        for key, item in items.items():
+            if key.lower() == name.lower():
+                return item
+        return None
+
     def find_heart(self):
         """The one pipe that comes from '-'. (Goal 3 already checked there is exactly one.)"""
         for pipe in self.pipes.values():

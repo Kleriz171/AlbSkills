@@ -4,7 +4,8 @@ import commands
 from loader import AtlasError, load_atlas
 
 DEFAULT_ATLAS = 'data/atlas.txt'
-ATLAS_USAGE = 'Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
+LESION_USAGE = 'Usage: lesion block <pipe>'
+ATLAS_USAGE ='Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
 
 
 def load_command(state, path):
@@ -42,7 +43,7 @@ def atlas_command(state, args):
         raise ValueError(f'Unknown atlas command "{sub}". {ATLAS_USAGE}')
     atlas = state['atlas']
     if atlas is None:
-        raise ValueError('No atlas loaded. Use: atlas load <path>')
+        raise ValueError('No atlas is loaded. Use: atlas load <path>')
 
     if sub == 'pipes':
         commands.show_pipes(atlas)
@@ -64,6 +65,22 @@ def atlas_command(state, args):
         commands.find(atlas, ' '.join(rest))
 
 
+def lesion_command(state, args):
+    """Handle everything after the word 'lesion'."""
+    if not args:
+        raise ValueError(f'Missing subcommand. {LESION_USAGE}')
+    sub, rest = args[0], args[1:]
+    if sub != 'block':
+        raise ValueError(f'Unknown lesion command "{sub}". {LESION_USAGE}')
+    atlas = state['atlas']
+    if atlas is None:
+        raise ValueError('No atlas is loaded. Use: atlas load <path>')
+
+    if not rest:
+        raise ValueError('Missing pipe. Usage: lesion block <pipe>')
+    commands.lesion_block(atlas, ' '.join(rest))
+
+
 def main():
     state = {'atlas': None, 'path': None}     # what the program currently remembers
     print('Synapse 1.0 - type "help" to see all commands')
@@ -82,10 +99,11 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  help\n  exit')
-        elif words[0] == 'atlas':
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  help\n  exit')
+        elif words[0] in ('atlas', 'lesion'):
+            handler = atlas_command if words[0] == 'atlas' else lesion_command
             try:
-                atlas_command(state, words[1:])
+                handler(state, words[1:])
             except ValueError as error:       # a mistake by the user, not a crash
                 print(f'ERROR: {error}')
         else:
