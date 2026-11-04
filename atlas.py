@@ -21,6 +21,16 @@ class Area:
         self.description = description
         self.line = line
 
+    def matches(self, word):
+        """Goal 4: does the word appear in the name, the symptoms or the description?
+        Upper/lower case does not matter."""
+        word = word.lower()
+        texts = [self.name, self.description] + self.symptoms
+        for text in texts:
+            if word in text.lower():
+                return True
+        return False
+
 
 class Atlas:
     def __init__(self):
@@ -46,3 +56,7 @@ class Atlas:
         for area in self.areas.values():
             for pipe_name in area.fed_by:
                 self.pipes[pipe_name].areas.append(area)
+
+    def find_areas(self, word):
+        """Goal 4: every area that matches the word, in file order."""
+        return [area for area in self.areas.values() if area.matches(word)]

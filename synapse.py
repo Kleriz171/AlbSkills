@@ -1,8 +1,10 @@
-"""Synapse: the program you start. Goal 3 gives it the 'atlas load' command."""
+"""Synapse: the program you start. Commands: atlas load / pipes / areas / show / find."""
 
+import commands
 from loader import load_atlas
 
 DEFAULT_ATLAS = 'data/atlas.txt'
+ATLAS_USAGE = 'Usage: atlas load <path> | pipes | areas | show <name> | find <word>'
 
 
 def load_command(state, path):
@@ -23,6 +25,38 @@ def load_command(state, path):
           f'{len(atlas.pipes)} pipes, {len(atlas.areas)} areas.')
 
 
+def atlas_command(state, args):
+    """Handle everything after the word 'atlas'."""
+    if not args:
+        raise ValueError(f'Missing subcommand. {ATLAS_USAGE}')
+    sub, rest = args[0], args[1:]
+
+    if sub == 'load':
+        if not rest:
+            raise ValueError('Missing path. Usage: atlas load <path>')
+        load_command(state, ' '.join(rest))
+        return
+
+    if sub not in ('pipes', 'areas', 'show', 'find'):
+        raise ValueError(f'Unknown atlas command "{sub}". {ATLAS_USAGE}')
+    atlas = state['atlas']
+    if atlas is None:
+        raise ValueError('No atlas loaded. Use: atlas load <path>')
+
+    if sub == 'pipes':
+        commands.show_pipes(atlas)
+    elif sub == 'areas':
+        commands.show_areas(atlas)
+    elif sub == 'show':
+        if not rest:
+            raise ValueError('Missing name. Usage: atlas show <name>')
+        commands.show_one(atlas, ' '.join(rest))
+    elif sub == 'find':
+        if not rest:
+            raise ValueError('Missing word. Usage: atlas find <word>')
+        commands.find(atlas, ' '.join(rest))
+
+
 def main():
     state = {'atlas': None, 'path': None}     # what the program currently remembers
     print('Synapse 1.0 - type "help" to see all commands')
@@ -40,12 +74,13 @@ def main():
         if words[0] == 'exit':
             break
         elif words[0] == 'help':
-            print('Commands:\n  atlas load <path>\n  help\n  exit')
-        elif words[0] == 'atlas' and len(words) >= 2 and words[1] == 'load':
-            if len(words) < 3:
-                print('ERROR: Missing path. Usage: atlas load <path>')
-            else:
-                load_command(state, ' '.join(words[2:]))
+            print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
+                  '  atlas show <name>\n  atlas find <word>\n  help\n  exit')
+        elif words[0] == 'atlas':
+            try:
+                atlas_command(state, words[1:])
+            except ValueError as error:       # a mistake by the user, not a crash
+                print(f'ERROR: {error}')
         else:
             print(f'ERROR: Unknown command "{line.strip()}".')
 
