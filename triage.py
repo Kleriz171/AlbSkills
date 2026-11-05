@@ -12,6 +12,7 @@ from fractions import Fraction
 
 import lesion
 import roadmap
+import unit
 import routing
 from commands import print_table
 
@@ -42,6 +43,7 @@ class Case:
         self.now = now                    # the latest time recorded: grows with every update
         self.history = []                 # Bonus 2: one entry per update
         self.route = None                 # Mission 4: the saved route (a dict), or None
+        self.hospital_stay = None         # Mission 5: the hospital times (a dict), or None
         self.last_seen = last_seen        # minutes after midnight, today or yesterday
         self.yesterday = yesterday        # True when last_seen was yesterday
         self.symptoms = symptoms          # list of codes, each one once, in typed order
@@ -355,6 +357,7 @@ def case_to_dict(case):
         'clotPossible': case.clot_possible,
         'history': case.history,
         'route': case.route,
+        'hospitalStay': case.hospital_stay,
     }
 
 
@@ -374,6 +377,7 @@ def case_from_dict(data):
     case.now = parse_time(data.get('updatedAt', data['createdAt']))   # absent before Bonus 2
     case.history = data.get('history', [])
     case.route = data.get('route')                          # absent before Mission 4
+    case.hospital_stay = data.get('hospitalStay')           # absent before Mission 5
     set_times(case)
     return case
 
@@ -470,6 +474,7 @@ def update_case(state, case_id):
     was_severity, was_band, was_pipe = case.severity, case.band, case.likely_pipe
     had_route = case.route is not None
     case.route = None                                 # it was worked out from the old data
+    case.hospital_stay = None                         # and so were the hospital times
 
     added = [code for code in new_symptoms if code not in case.symptoms]
     case.symptoms = case.symptoms + added             # a symptom already there counts once
@@ -738,3 +743,80 @@ def route_whatif(state, typed_city, typed_ability):
     for note in skipped:
         print(note)
 
+
+
+# ------------------------------------------------------ Mission 5: the stroke unit
+
+def parse_limit(text):
+    """'10:00' -> 600.   '07:30 tomorrow' -> 1830.   '22:30 yesterday' -> -90."""
+    clock, _, day = text.partition(' ')
+    minutes = parse_time(clock)
+    if day == 'tomorrow':
+        return minutes + MINUTES_PER_DAY
+    if day == 'yesterday':
+        return minutes - MINUTES_PER_DAY
+    return minutes
+
+
+def stay_to_dict(stay):
+    show = lambda value: None if value is None else format_limit(value)
+    return {
+        'hospital': unit.UNIT_HOSPITAL,
+        'arrives': format_limit(stay.patient.arrival),
+        'scanAt': show(stay.scan_start),
+        'drugAt': show(stay.drug_at),
+        'doorToDrugMinutes': stay.door_to_drug,
+        'clotRemovalAt': show(stay.clot_start),
+    }
+
+
+def run_unit(state, filename):
+    """unit run <file>: replay the morning, print it, and save the times inside the cases."""
+    taken = {case.id for case in state['cases']}
+    try:
+        from_file = unit.read_events(filename, taken)
+    except unit.UnitError as error:
+        for message in error.messages:
+            print(f'ERROR: {message}')
+        return
+    from_cases, notes, elsewhere = unit.patients_from_cases(state['cases'], parse_limit)
+    for note in notes:                                   # a message; the morning still runs
+        print(note)
+
+    patients = from_file + from_cases
+    if not patients:
+        print('No patients arrive this morning.')
+        return
+
+    stays = unit.run_morning(patients)
+    print(f'{unit.UNIT_HOSPITAL} - 1 CT scanner - first come, first served')
+    detail = f'{len(patients)} patient{"" if len(patients) == 1 else "s"}: {len(from_file)} from {os.path.basename(filename)}, ' \
+             f'{len(from_cases)} from your cases'
+    if elsewhere:
+        verb = 'goes' if len(elsewhere) == 1 else 'go'
+        detail += f' ({", ".join(elsewhere)} {verb} to another hospital)'
+    print(detail)
+    print()
+    for line in unit.collect_events(stays, format_limit):
+        print(line)
+    print()
+    print_table(['PATIENT', 'ARRIVES', 'SCAN', 'DRUG', 'DOOR-TO-DRUG', 'CLOT REMOVAL', 'NOTE'],
+                unit.table_rows(stays, format_limit))
+    print()
+    print(unit.summary_line(stays))
+
+    saved = [stay for stay in stays.values() if stay.patient.case is not None]
+    if not saved:
+        return
+    old = {stay.patient.case.id: stay.patient.case.hospital_stay for stay in saved}
+    for stay in saved:
+        stay.patient.case.hospital_stay = stay_to_dict(stay)   # a new run replaces the old times
+    try:
+        save_cases(state['cases_path'], state['cases'])
+    except OSError:
+        for stay in saved:
+            stay.patient.case.hospital_stay = old[stay.patient.case.id]
+        print(f'ERROR: Could not save the case to {state["cases_path"]}.')
+        return
+    ids = sorted(stay.patient.case.id for stay in saved)
+    print(f'SUCCESS: Hospital times saved for {", ".join(ids)}.')

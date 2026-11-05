@@ -12,6 +12,7 @@ DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
 DEFAULT_ROADS = 'data/roads.txt'
 DEFAULT_HOSPITALS = 'data/hospitals.txt'
+UNIT_USAGE = 'Usage: unit run <file>'
 ROUTE_USAGE = 'Usage: route from <city> | <case id> | whatif <city> <ability>'
 MAP_USAGE = 'Usage: map load <path> | roads | hospitals | coverage'
 TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new | list | show <id> | update <id> | urgent'
@@ -185,6 +186,20 @@ def route_command(state, args):
     commands.show_routes(city, routes, len(hospitals) - len(routes))
 
 
+def unit_command(state, args):
+    """Handle everything after the word 'unit'."""
+    if not args:
+        raise ValueError(f'Missing subcommand. {UNIT_USAGE}')
+    sub, rest = args[0], args[1:]
+    if sub != 'run':
+        raise ValueError(f'Unknown unit command "{sub}". {UNIT_USAGE}')
+    if not rest:
+        raise ValueError('Missing file. Usage: unit run <file>')
+    if not state['cases_ok']:
+        raise ValueError(f'{state["cases_path"]} could not be read, so the cases cannot be used.')
+    triage.run_unit(state, ' '.join(rest))
+
+
 def load_cases_command(state):
     """Read the saved cases when the program starts. If the file is damaged we say so and
     refuse to create new cases, so we can never overwrite it with an empty list."""
@@ -298,9 +313,9 @@ def main():
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
                   '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  help\n  exit')
-        elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route'):
+        elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route', 'unit'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
-                       'triage': triage_command, 'map': map_command, 'route': route_command}[words[0]]
+                       'triage': triage_command, 'map': map_command, 'route': route_command, 'unit': unit_command}[words[0]]
             try:
                 handler(state, words[1:])
             except ValueError as error:       # a mistake by the user, not a crash
