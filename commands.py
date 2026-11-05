@@ -244,3 +244,18 @@ def show_hospitals(hospitals):
     rows = [[h.name, h.city, ', '.join(h.abilities)] for h in hospitals]
     print_table(['HOSPITAL', 'CITY', 'CAN DO'], rows)
     print(f'{len(rows)} hospitals')
+
+
+def show_routes(city, routes, unreachable):
+    """route from <city>: one row per reachable hospital, fastest first."""
+    rows = []
+    for route in routes:
+        if len(route.path) == 1:
+            way = f'inside {city}'
+        else:
+            way = ' -> '.join(route.path)
+        rows.append([route.hospital.name, route.hospital.city,
+                     ', '.join(route.hospital.abilities), f'{route.minutes} min', way])
+    print_table(['HOSPITAL', 'CITY', 'CAN DO', 'DRIVE', 'ROUTE'], rows)
+    if unreachable:
+        print(f'{unreachable} hospitals cannot be reached by road from {city}.')

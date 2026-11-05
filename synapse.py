@@ -3,6 +3,7 @@
 import commands
 from loader import AtlasError, load_atlas
 import roadmap
+import routing
 import triage
 from symptoms import SymptomError, load_symptoms
 
@@ -11,6 +12,7 @@ DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
 DEFAULT_ROADS = 'data/roads.txt'
 DEFAULT_HOSPITALS = 'data/hospitals.txt'
+ROUTE_USAGE = 'Usage: route from <city>'
 MAP_USAGE = 'Usage: map load <path> | roads | hospitals'
 TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new | list | show <id> | update <id> | urgent'
 LESION_USAGE = 'Usage: lesion block <pipe>[, <pipe>...] | risk <area> | tree <pipe>'
@@ -144,6 +146,31 @@ def map_command(state, args):
         commands.show_hospitals(state['hospitals'])
 
 
+def route_command(state, args):
+    """Handle everything after the word 'route'."""
+    if not args:
+        raise ValueError(f'Missing subcommand. {ROUTE_USAGE}')
+    sub, rest = args[0], args[1:]
+    if sub != 'from':
+        raise ValueError(f'Unknown route command "{sub}". {ROUTE_USAGE}')
+    if not rest:
+        raise ValueError('Missing city. Usage: route from <city>')
+    roads, hospitals = state['roads'], state['hospitals']
+    if roads is None:
+        raise ValueError('No roads are loaded. Use: map load <path>')
+    if not hospitals:
+        raise ValueError('No hospitals are loaded. Use: map load <path>')
+
+    typed = ' '.join(rest)
+    city = routing.find_city(roads, typed)
+    if city is None:
+        raise ValueError(f'The city "{typed}" is not on the map.')
+    routes = routing.hospital_routes(roads, hospitals, city)
+    if not routes:
+        raise ValueError(f'No road leads from {city} to any hospital.')
+    commands.show_routes(city, routes, len(hospitals) - len(routes))
+
+
 def load_cases_command(state):
     """Read the saved cases when the program starts. If the file is damaged we say so and
     refuse to create new cases, so we can never overwrite it with an empty list."""
@@ -256,10 +283,10 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  help\n  exit')
-        elif words[0] in ('atlas', 'lesion', 'triage', 'map'):
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  route from <city>\n  help\n  exit')
+        elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
-                       'triage': triage_command, 'map': map_command}[words[0]]
+                       'triage': triage_command, 'map': map_command, 'route': route_command}[words[0]]
             try:
                 handler(state, words[1:])
             except ValueError as error:       # a mistake by the user, not a crash
