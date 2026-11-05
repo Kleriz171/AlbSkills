@@ -7,6 +7,14 @@ Every answer is checked as soon as it is typed. A wrong answer prints
 import re
 
 MAX_AGE = 120
+
+# The rules of Goal 3. They are numbers from the PDF, kept in one place,
+# so a changed rule is a one-line change.
+MINUTES_PER_DAY = 24 * 60
+DRUG_WINDOW = 4 * 60 + 30            # the drug works up to 4 h 30 min after last seen well
+CLOT_WINDOW = 24 * 60                # clot removal works up to 24 h after last seen well
+CLOT_MIN_SEVERITY = 5                # clot removal needs severity 5 or more
+BANDS = ((10, 'severe'), (5, 'moderate'), (0, 'minor'))    # (lowest severity, band name)
 TIME_FORMAT = re.compile(r'(\d\d):(\d\d)')         # exactly HH:MM
 
 
@@ -23,6 +31,14 @@ class Case:
         self.last_seen = last_seen        # minutes after midnight, today or yesterday
         self.yesterday = yesterday        # True when last_seen was yesterday
         self.symptoms = symptoms          # list of codes, each one once, in typed order
+        # filled in by assess() (Goal 3). Times below are on ONE timeline, in minutes:
+        # 0 = midnight at the start of today, negative = yesterday, 1440+ = tomorrow.
+        self.severity = 0
+        self.band = ''
+        self.drug_until = 0
+        self.drug_possible = False
+        self.clot_until = 0
+        self.clot_time_ok = False         # time limit only; Goal 4 adds the "big pipe" rule
 
 
 # ------------------------------------------------------------------ checks
@@ -121,11 +137,82 @@ def new_case(state):
     case_id = format_case_id(state['next_case_number'])
     state['next_case_number'] += 1                # the number is used up, never given out again
     case = Case(case_id, name, age, city, now, last_seen, yesterday, symptoms)
+    assess(case, known)
     state['cases'].append(case)
     print(f'SUCCESS: Case {case.id} created.')
+    print_assessment(case)
     return case
 
 
 def format_time(minutes):
     """490 -> '08:10'"""
     return f'{minutes // 60:02d}:{minutes % 60:02d}'
+
+
+# ------------------------------------------------------- Goal 3: score and time
+
+def band_for(severity):
+    for lowest, name in BANDS:
+        if severity >= lowest:
+            return name
+
+
+def timeline(clock, yesterday=False):
+    """The trap of this mission, solved once: put every time on ONE timeline.
+    08:10 today -> 490.   22:30 yesterday -> 1350 - 1440 = -90.
+    Then comparing times and adding hours is plain arithmetic, even across midnight."""
+    return clock - MINUTES_PER_DAY if yesterday else clock
+
+
+def assess(case, known):
+    """Fill in severity, band and the two time limits. known: code -> Symptom."""
+    case.severity = sum(known[code].points for code in case.symptoms)
+    case.band = band_for(case.severity)
+
+    seen = timeline(case.last_seen, case.yesterday)
+    case.drug_until = seen + DRUG_WINDOW
+    case.drug_possible = case.now <= case.drug_until        # equal to the limit still counts
+    case.clot_until = seen + CLOT_WINDOW
+    case.clot_time_ok = case.now <= case.clot_until
+
+
+def format_limit(moment):
+    """Timeline minutes -> '12:00', '07:30 tomorrow' or '22:30 yesterday'."""
+    text = format_time(moment % MINUTES_PER_DAY)
+    day = moment // MINUTES_PER_DAY
+    if day == 1:
+        return text + ' tomorrow'
+    if day == -1:
+        return text + ' yesterday'
+    return text
+
+
+def format_left(minutes):
+    """200 -> '3 h 20 min'"""
+    return f'{minutes // 60} h {minutes % 60:02d} min'
+
+
+def drug_text(case):
+    if case.drug_possible:
+        left = case.drug_until - case.now
+        return f'yes, until {format_limit(case.drug_until)} ({format_left(left)} left)'
+    return f'no, the time limit passed at {format_limit(case.drug_until)}'
+
+
+def clot_text(case):
+    """Goal 3 knows the time rule and the severity rule. The 'big pipe' rule is Goal 4."""
+    if not case.clot_time_ok:
+        return f'no, the time limit passed at {format_limit(case.clot_until)}'
+    if case.severity < CLOT_MIN_SEVERITY:
+        return f'no, the severity is below {CLOT_MIN_SEVERITY}'
+    return f'time allows it, until {format_limit(case.clot_until)} (the blocked pipe is not checked yet)'
+
+
+def print_field(label, value):
+    print(f'{label + ":":<24}{value}')
+
+
+def print_assessment(case):
+    print_field('Severity', f'{case.severity} ({case.band})')
+    print_field('Drug possible', drug_text(case))
+    print_field('Clot removal', clot_text(case))
