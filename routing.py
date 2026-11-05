@@ -76,3 +76,62 @@ def hospital_routes(roads, hospitals, start):
             found.append(HospitalRoute(hospital, minutes[hospital.city],
                                        path_to(came_from, start, hospital.city)))
     return sorted(found, key=lambda route: route.minutes)
+
+
+# ------------------------------------------------------- Goal 3: choose a hospital
+
+DRUG_AFTER_ARRIVAL = 30     # minutes from arrival to the drug (fixed by the PDF)
+CLOT_AFTER_ARRIVAL = 60     # minutes from arrival to clot removal (fixed by the PDF)
+
+
+class Plan:
+    """Where the ambulance goes and when each step happens (minutes on the case timeline)."""
+
+    def __init__(self, goal, route, leaves, drug_at, clot_at):
+        self.goal = goal                    # 'clot', 'drug' or 'scan': the best treatment chosen
+        self.hospital = route.hospital
+        self.path = route.path
+        self.drive = route.minutes
+        self.leaves = leaves
+        self.arrives = leaves + route.minutes
+        self.drug_at = drug_at              # None when the drug is not given here
+        self.clot_at = clot_at              # None when there is no clot removal
+
+
+def plan_route(case, roads, hospitals):
+    """Choose the hospital for a case. Raises ValueError with a message for the user.
+
+    The case already says which treatments are still possible (clot_possible,
+    drug_possible, computed in Mission 3). We try the best one first: clot removal,
+    then the drug, then a scan. For each, a hospital counts only if it can do it AND
+    the patient gets it in time. Among those, the fastest to reach wins; equally fast
+    hospitals keep the order of hospitals.txt."""
+    start = find_city(roads, case.city)
+    if start is None:
+        raise ValueError(f'The city of case {case.id}, "{case.city}", is not on the map.')
+    routes = hospital_routes(roads, hospitals, start)            # fastest first
+    if not routes:
+        raise ValueError(f'No road leads from {start} to any hospital.')
+
+    leaves = case.created                      # the ambulance leaves when the case was created
+
+    def drug_in_time(route):
+        return (case.drug_possible and route.hospital.can('DRUG')
+                and leaves + route.minutes + DRUG_AFTER_ARRIVAL <= case.drug_until)
+
+    def clot_in_time(route):
+        return (case.clot_possible and route.hospital.can('CLOT')
+                and leaves + route.minutes + CLOT_AFTER_ARRIVAL <= case.clot_until)
+
+    for route in routes:
+        if clot_in_time(route):
+            arrives = leaves + route.minutes
+            drug_at = arrives + DRUG_AFTER_ARRIVAL if drug_in_time(route) else None
+            return Plan('clot', route, leaves, drug_at, arrives + CLOT_AFTER_ARRIVAL)
+    for route in routes:
+        if drug_in_time(route):
+            return Plan('drug', route, leaves, leaves + route.minutes + DRUG_AFTER_ARRIVAL, None)
+    for route in routes:
+        if route.hospital.can('CT'):
+            return Plan('scan', route, leaves, None, None)
+    raise ValueError(f'No hospital with a CT can be reached from {start}.')

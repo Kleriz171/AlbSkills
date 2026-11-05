@@ -11,6 +11,7 @@ import re
 from fractions import Fraction
 
 import lesion
+import routing
 from commands import print_table
 
 MAX_AGE = 120
@@ -39,6 +40,7 @@ class Case:
         self.created = now                # when the case was opened (never changes)
         self.now = now                    # the latest time recorded: grows with every update
         self.history = []                 # Bonus 2: one entry per update
+        self.route = None                 # Mission 4: the saved route (a dict), or None
         self.last_seen = last_seen        # minutes after midnight, today or yesterday
         self.yesterday = yesterday        # True when last_seen was yesterday
         self.symptoms = symptoms          # list of codes, each one once, in typed order
@@ -351,6 +353,7 @@ def case_to_dict(case):
         'clotUntil': format_limit(case.clot_until),
         'clotPossible': case.clot_possible,
         'history': case.history,
+        'route': case.route,
     }
 
 
@@ -369,6 +372,7 @@ def case_from_dict(data):
     case.clot_possible = data['clotPossible']
     case.now = parse_time(data.get('updatedAt', data['createdAt']))   # absent before Bonus 2
     case.history = data.get('history', [])
+    case.route = data.get('route')                          # absent before Mission 4
     set_times(case)
     return case
 
@@ -463,6 +467,8 @@ def update_case(state, case_id):
 
     backup = copy.deepcopy(case.__dict__)             # so a failed save can be undone
     was_severity, was_band, was_pipe = case.severity, case.band, case.likely_pipe
+    had_route = case.route is not None
+    case.route = None                                 # it was worked out from the old data
 
     added = [code for code in new_symptoms if code not in case.symptoms]
     case.symptoms = case.symptoms + added             # a symptom already there counts once
@@ -497,6 +503,8 @@ def update_case(state, case_id):
     print_field('Likely blocked pipe', pipe)
     print_field('Drug possible', drug_text(case))
     print_field('Clot removal', clot_text(case))
+    if had_route:
+        print(f'The saved route is out of date. Run: route {case.id}')
     return case
 
 
@@ -540,3 +548,80 @@ def show_urgent(cases):
         group.sort(key=lambda item: item[0])          # shortest time left first (stable)
         print_rows([[f'{case.id} {case.name}', f'until {format_limit(until)}',
                      f'{format_left(left)} left'] for left, case, until in group])
+
+
+# ------------------------------------------------ Mission 4, Goal 3: route a case
+
+def route_to_dict(plan):
+    """What is saved inside the case (Mission 5 reads 'arrives', Mission 7 prints it all)."""
+    return {
+        'goal': {'clot': 'clot removal', 'drug': 'drug', 'scan': 'scan'}[plan.goal],
+        'hospital': plan.hospital.name,
+        'path': plan.path,
+        'driveMinutes': plan.drive,
+        'leaves': format_limit(plan.leaves),
+        'arrives': format_limit(plan.arrives),
+        'drugAt': None if plan.drug_at is None else format_limit(plan.drug_at),
+        'clotRemovalAt': None if plan.clot_at is None else format_limit(plan.clot_at),
+    }
+
+
+def print_plan(case, plan):
+    needs = []
+    if case.clot_possible:
+        needs.append(f'clot removal (until {format_limit(case.clot_until)})')
+    if case.drug_possible:
+        needs.append(f'drug (until {format_limit(case.drug_until)})')
+    if case.clot_possible and case.drug_possible:
+        text = 'Needs: ' + ', '.join(needs)
+    elif case.clot_possible:
+        text = f'Needs: {needs[0]}. The drug limit has passed.'
+    elif case.drug_possible:
+        text = f'Needs: {needs[0]}. Clot removal is not possible.'
+    else:
+        text = 'Needs: no treatment is possible any more, only a scan and care.'
+
+    print(f'Case {case.id}: {case.name}, {case.city}, leaves at {format_limit(plan.leaves)}')
+    print()
+    print(text)
+    name = plan.hospital.name
+    if plan.goal == 'clot':
+        print(f'Fastest hospital that can remove the clot: {name}')
+    elif plan.goal == 'drug':
+        print(f'Fastest hospital that can give the drug in time: {name}')
+    else:
+        print(f'No hospital can give any treatment in time. Fastest hospital with a CT: {name}')
+    print()
+
+    way = f'inside {plan.path[0]}' if len(plan.path) == 1 else ' -> '.join(plan.path)
+    row = lambda label, value: print(f'{label + ":":<14}{value}')
+    row('Route', f'{way}, {plan.drive} min')
+    row('Arrives', format_limit(plan.arrives))
+    if plan.drug_at is not None:
+        row('Drug', format_limit(plan.drug_at))
+    elif case.drug_possible and plan.goal == 'clot':
+        if plan.hospital.can('DRUG'):
+            row('Drug', f'too late (limit {format_limit(case.drug_until)})')
+        else:
+            row('Drug', 'not given at this hospital')
+    if plan.clot_at is not None:
+        row('Clot removal', format_limit(plan.clot_at))
+    print()
+
+
+def route_case(state, case_id):
+    """route <id>: choose the hospital and save the route inside the case."""
+    case = find_case(state['cases'], case_id)
+    plan = routing.plan_route(case, state['roads'], state['hospitals'])
+    print_plan(case, plan)
+
+    old_route = case.route
+    case.route = route_to_dict(plan)
+    try:
+        save_cases(state['cases_path'], state['cases'])
+    except OSError:
+        case.route = old_route                        # not saved = not routed
+        print(f'ERROR: Could not save the case to {state["cases_path"]}.')
+        return None
+    print(f'SUCCESS: Route saved for {case.id}.')
+    return plan

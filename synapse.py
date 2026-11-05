@@ -12,7 +12,7 @@ DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
 DEFAULT_ROADS = 'data/roads.txt'
 DEFAULT_HOSPITALS = 'data/hospitals.txt'
-ROUTE_USAGE = 'Usage: route from <city>'
+ROUTE_USAGE = 'Usage: route from <city> | <case id>'
 MAP_USAGE = 'Usage: map load <path> | roads | hospitals'
 TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new | list | show <id> | update <id> | urgent'
 LESION_USAGE = 'Usage: lesion block <pipe>[, <pipe>...] | risk <area> | tree <pipe>'
@@ -151,15 +151,19 @@ def route_command(state, args):
     if not args:
         raise ValueError(f'Missing subcommand. {ROUTE_USAGE}')
     sub, rest = args[0], args[1:]
-    if sub != 'from':
-        raise ValueError(f'Unknown route command "{sub}". {ROUTE_USAGE}')
-    if not rest:
-        raise ValueError('Missing city. Usage: route from <city>')
     roads, hospitals = state['roads'], state['hospitals']
     if roads is None:
         raise ValueError('No roads are loaded. Use: map load <path>')
     if not hospitals:
         raise ValueError('No hospitals are loaded. Use: map load <path>')
+
+    if sub != 'from':                          # anything else is a case id: route P-0001
+        if not state['cases_ok']:
+            raise ValueError(f'{state["cases_path"]} could not be read, so no case can be saved.')
+        triage.route_case(state, ' '.join(args))
+        return
+    if not rest:
+        raise ValueError('Missing city. Usage: route from <city>')
 
     typed = ' '.join(rest)
     city = routing.find_city(roads, typed)
