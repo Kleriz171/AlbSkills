@@ -213,3 +213,12 @@ def find(atlas, word):
     width = max(len(area.name) for area in matches)
     for area in matches:
         print(f'  {area.name.ljust(width)}  {area.description}')
+
+
+# ------------------------------------------------------------ Mission 3: triage
+
+def show_symptoms(symptoms):
+    """triage symptoms: list every symptom code so the crew can look one up."""
+    rows = [[s.code, str(s.points), s.description] for s in symptoms.values()]
+    print_table(['CODE', 'POINTS', 'WHAT THE CREW SEES'], rows)
+    print(f'{len(rows)} symptoms')

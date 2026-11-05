@@ -2,8 +2,11 @@
 
 import commands
 from loader import AtlasError, load_atlas
+from symptoms import SymptomError, load_symptoms
 
 DEFAULT_ATLAS = 'data/atlas.txt'
+DEFAULT_SYMPTOMS = 'data/symptoms.txt'
+TRIAGE_USAGE = 'Usage: triage load <path> | symptoms'
 LESION_USAGE = 'Usage: lesion block <pipe>[, <pipe>...] | risk <area> | tree <pipe>'
 ATLAS_USAGE ='Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
 
@@ -67,6 +70,45 @@ def atlas_command(state, args):
         commands.find(atlas, ' '.join(rest))
 
 
+def load_symptoms_command(state, path):
+    """Try to load a symptom list. If anything is wrong, keep the old one (all or nothing)."""
+    try:
+        symptoms = load_symptoms(path)
+    except SymptomError as error:
+        for message in error.messages:
+            print(f'ERROR: {message}')
+        if state['symptoms_path']:
+            print(f'Symptoms not loaded. Still using {state["symptoms_path"]}.')
+        else:
+            print('Symptoms not loaded.')
+        return
+
+    state['symptoms'] = symptoms
+    state['symptoms_path'] = path
+    print(f'SUCCESS: Symptoms loaded from {path}: {len(symptoms)} symptoms.')
+
+
+def triage_command(state, args):
+    """Handle everything after the word 'triage'."""
+    if not args:
+        raise ValueError(f'Missing subcommand. {TRIAGE_USAGE}')
+    sub, rest = args[0], args[1:]
+
+    if sub == 'load':
+        if not rest:
+            raise ValueError('Missing path. Usage: triage load <path>')
+        load_symptoms_command(state, ' '.join(rest))
+        return
+
+    if sub not in ('symptoms',):
+        raise ValueError(f'Unknown triage command "{sub}". {TRIAGE_USAGE}')
+    if state['symptoms'] is None:
+        raise ValueError('No symptom list is loaded. Use: triage load <path>')
+
+    if sub == 'symptoms':
+        commands.show_symptoms(state['symptoms'])
+
+
 def lesion_command(state, args):
     """Handle everything after the word 'lesion'."""
     if not args:
@@ -93,9 +135,10 @@ def lesion_command(state, args):
 
 
 def main():
-    state = {'atlas': None, 'path': None}     # what the program currently remembers
+    state = {'atlas': None, 'path': None, 'symptoms': None, 'symptoms_path': None}     # what the program currently remembers
     print('Synapse 1.0 - type "help" to see all commands')
     load_command(state, DEFAULT_ATLAS)        # the atlas loads when the program starts
+    load_symptoms_command(state, DEFAULT_SYMPTOMS)   # so does the symptom list
 
     while True:
         try:
@@ -111,8 +154,9 @@ def main():
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
                   '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  help\n  exit')
-        elif words[0] in ('atlas', 'lesion'):
-            handler = atlas_command if words[0] == 'atlas' else lesion_command
+        elif words[0] in ('atlas', 'lesion', 'triage'):
+            handler = {'atlas': atlas_command, 'lesion': lesion_command,
+                       'triage': triage_command}[words[0]]
             try:
                 handler(state, words[1:])
             except ValueError as error:       # a mistake by the user, not a crash
