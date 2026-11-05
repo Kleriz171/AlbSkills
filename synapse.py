@@ -2,11 +2,12 @@
 
 import commands
 from loader import AtlasError, load_atlas
+import triage
 from symptoms import SymptomError, load_symptoms
 
 DEFAULT_ATLAS = 'data/atlas.txt'
 DEFAULT_SYMPTOMS = 'data/symptoms.txt'
-TRIAGE_USAGE = 'Usage: triage load <path> | symptoms'
+TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new'
 LESION_USAGE = 'Usage: lesion block <pipe>[, <pipe>...] | risk <area> | tree <pipe>'
 ATLAS_USAGE ='Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
 
@@ -100,13 +101,15 @@ def triage_command(state, args):
         load_symptoms_command(state, ' '.join(rest))
         return
 
-    if sub not in ('symptoms',):
+    if sub not in ('symptoms', 'new'):
         raise ValueError(f'Unknown triage command "{sub}". {TRIAGE_USAGE}')
     if state['symptoms'] is None:
         raise ValueError('No symptom list is loaded. Use: triage load <path>')
 
     if sub == 'symptoms':
         commands.show_symptoms(state['symptoms'])
+    elif sub == 'new':
+        triage.new_case(state)
 
 
 def lesion_command(state, args):
@@ -135,7 +138,8 @@ def lesion_command(state, args):
 
 
 def main():
-    state = {'atlas': None, 'path': None, 'symptoms': None, 'symptoms_path': None}     # what the program currently remembers
+    state = {'atlas': None, 'path': None, 'symptoms': None, 'symptoms_path': None,
+             'cases': [], 'next_case_number': 1}     # what the program currently remembers
     print('Synapse 1.0 - type "help" to see all commands')
     load_command(state, DEFAULT_ATLAS)        # the atlas loads when the program starts
     load_symptoms_command(state, DEFAULT_SYMPTOMS)   # so does the symptom list
@@ -153,7 +157,7 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  help\n  exit')
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage load <path>\n  help\n  exit')
         elif words[0] in ('atlas', 'lesion', 'triage'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
                        'triage': triage_command}[words[0]]
