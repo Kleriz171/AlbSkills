@@ -11,6 +11,7 @@ import re
 from fractions import Fraction
 
 import lesion
+import roadmap
 import routing
 from commands import print_table
 
@@ -552,9 +553,12 @@ def show_urgent(cases):
 
 # ------------------------------------------------ Mission 4, Goal 3: route a case
 
-def route_to_dict(plan):
-    """What is saved inside the case (Mission 5 reads 'arrives', Mission 7 prints it all)."""
-    return {
+def route_to_dict(decision):
+    """What is saved inside the case (Mission 5 reads 'arrives', Mission 7 prints it all).
+    The top-level keys always describe the LAST hospital, where the clot is removed."""
+    plan = decision.chosen
+    saved = {
+        'plan': 'drug first, then transfer' if plan.stop else 'straight',
         'goal': {'clot': 'clot removal', 'drug': 'drug', 'scan': 'scan'}[plan.goal],
         'hospital': plan.hospital.name,
         'path': plan.path,
@@ -564,9 +568,26 @@ def route_to_dict(plan):
         'drugAt': None if plan.drug_at is None else format_limit(plan.drug_at),
         'clotRemovalAt': None if plan.clot_at is None else format_limit(plan.clot_at),
     }
+    if plan.stop:
+        saved['firstStop'] = {
+            'hospital': plan.stop.hospital.name,
+            'path': plan.stop.path,
+            'driveMinutes': plan.stop.drive,
+            'arrives': format_limit(plan.stop.arrives),
+            'drugAt': format_limit(plan.stop.drug_at),
+        }
+    return saved
 
 
-def print_plan(case, plan):
+def way_text(path):
+    return f'inside {path[0]}' if len(path) == 1 else ' -> '.join(path)
+
+
+def print_header(case, plan):
+    print(f'Case {case.id}: {case.name}, {case.city}, leaves at {format_limit(plan.leaves)}')
+
+
+def print_plan(case, plan, with_header=True):
     needs = []
     if case.clot_possible:
         needs.append(f'clot removal (until {format_limit(case.clot_until)})')
@@ -581,21 +602,21 @@ def print_plan(case, plan):
     else:
         text = 'Needs: no treatment is possible any more, only a scan and care.'
 
-    print(f'Case {case.id}: {case.name}, {case.city}, leaves at {format_limit(plan.leaves)}')
-    print()
-    print(text)
-    name = plan.hospital.name
-    if plan.goal == 'clot':
-        print(f'Fastest hospital that can remove the clot: {name}')
-    elif plan.goal == 'drug':
-        print(f'Fastest hospital that can give the drug in time: {name}')
-    else:
-        print(f'No hospital can give any treatment in time. Fastest hospital with a CT: {name}')
-    print()
+    if with_header:
+        print_header(case, plan)
+        print()
+        print(text)
+        name = plan.hospital.name
+        if plan.goal == 'clot':
+            print(f'Fastest hospital that can remove the clot: {name}')
+        elif plan.goal == 'drug':
+            print(f'Fastest hospital that can give the drug in time: {name}')
+        else:
+            print(f'No hospital can give any treatment in time. Fastest hospital with a CT: {name}')
+        print()
 
-    way = f'inside {plan.path[0]}' if len(plan.path) == 1 else ' -> '.join(plan.path)
     row = lambda label, value: print(f'{label + ":":<14}{value}')
-    row('Route', f'{way}, {plan.drive} min')
+    row('Route', f'{way_text(plan.path)}, {plan.drive} min')
     row('Arrives', format_limit(plan.arrives))
     if plan.drug_at is not None:
         row('Drug', format_limit(plan.drug_at))
@@ -609,14 +630,42 @@ def print_plan(case, plan):
     print()
 
 
+def print_comparison(case, decision):
+    """Bonus 1: show both plans, then which one was chosen and why."""
+    a, b = decision.straight, decision.transfer
+    print_header(case, a)
+    if a.drug_at is not None:
+        drug_a = f'drug {format_limit(a.drug_at)}'
+    elif a.hospital.can('DRUG'):
+        drug_a = 'drug too late'
+    else:
+        drug_a = 'no drug at this hospital'
+    print(f'Plan A, straight to clot removal: {a.hospital.name}')
+    print(f'   Arrives {format_limit(a.arrives)} - {drug_a} - clot removal {format_limit(a.clot_at)}')
+    print('Plan B, drug first, then transfer:')
+    print(f'   {b.stop.hospital.name} ({way_text(b.stop.path)}): arrives '
+          f'{format_limit(b.stop.arrives)} - drug {format_limit(b.stop.drug_at)}')
+    print(f'   Transfer leaves {format_limit(b.leaves)} -> {" -> ".join(b.path)}, {b.drive} min')
+    print(f'   {b.hospital.name}: arrives {format_limit(b.arrives)} - '
+          f'clot removal {format_limit(b.clot_at)}')
+    letter = 'B' if decision.chosen is b else 'A'
+    print(f'Chosen: Plan {letter}. {decision.reason}')
+    if letter == 'A':                                  # Plan B lines already show the whole trip
+        print()
+        print_plan(case, a, with_header=False)
+
+
 def route_case(state, case_id):
     """route <id>: choose the hospital and save the route inside the case."""
     case = find_case(state['cases'], case_id)
-    plan = routing.plan_route(case, state['roads'], state['hospitals'])
-    print_plan(case, plan)
+    decision = routing.plan_route(case, state['roads'], state['hospitals'])
+    if decision.transfer is not None:
+        print_comparison(case, decision)
+    else:
+        print_plan(case, decision.chosen)
 
     old_route = case.route
-    case.route = route_to_dict(plan)
+    case.route = route_to_dict(decision)
     try:
         save_cases(state['cases_path'], state['cases'])
     except OSError:
@@ -624,4 +673,68 @@ def route_case(state, case_id):
         print(f'ERROR: Could not save the case to {state["cases_path"]}.')
         return None
     print(f'SUCCESS: Route saved for {case.id}.')
-    return plan
+    return decision
+
+
+# ------------------------------------------------------- Bonus 3: route whatif
+
+ABILITY_PHRASES = {'CT': 'do CT scans', 'DRUG': 'give the drug', 'CLOT': 'remove clots'}
+
+
+def route_whatif(state, typed_city, typed_ability):
+    """route whatif <city> <ability>: what would change for every saved case that can still
+    get clot removal, if the hospital in that city could do one more thing.
+    Nothing is written anywhere: the change exists only in a copy of the hospital list."""
+    roads, hospitals = state['roads'], state['hospitals']
+    ability = typed_ability.upper()
+    if ability not in roadmap.ABILITIES:
+        raise ValueError(f'Unknown ability "{typed_ability}". Expected CT, DRUG or CLOT.')
+    city = routing.find_city(roads, typed_city)
+    if city is None:
+        raise ValueError(f'The city "{typed_city}" is not on the map.')
+    in_city = [h for h in hospitals if h.city == city]
+    if not in_city:
+        raise ValueError(f'There is no hospital in {city}.')
+    candidates = [h for h in in_city if ability not in h.abilities]
+    if not candidates:
+        names = ', '.join(h.name for h in in_city)
+        print(f'{names} can already {ABILITY_PHRASES[ability]}. Nothing would change.')
+        return
+    chosen = candidates[0]                          # the first hospital in the city that lacks it
+    if ability == 'DRUG' and 'CT' not in chosen.abilities:
+        raise ValueError(f'{chosen.name} cannot give the DRUG without a CT (a hospital that '
+                         f'gives the DRUG must also have CT).')
+
+    changed = routing.with_ability(hospitals, chosen, ability)
+    print(f'What if {chosen.name} ({city}) could also {ABILITY_PHRASES[ability]}?')
+    print()
+
+    rows, skipped = [], []
+    total_saved = counted = 0
+    for case in state['cases']:
+        if not case.clot_possible:
+            continue
+        start = routing.find_city(roads, case.city)
+        if start is None:
+            skipped.append(f'{case.id} skipped: its city "{case.city}" is not on the map.')
+            continue
+        now = routing.clot_drive(roads, hospitals, start)
+        after = routing.clot_drive(roads, changed, start)
+        if now is None or after is None:
+            saved_text = 'n/a'
+        else:
+            saved_text = f'{now - after} min'
+            total_saved += now - after
+            counted += 1
+        rows.append([case.id, case.city, 'none' if now is None else f'{now} min',
+                     'none' if after is None else f'{after} min', saved_text])
+
+    if not rows:
+        print('No saved case can still get clot removal, so nothing can be compared.')
+    else:
+        print_table(['CASE', 'CITY', 'NOW', 'WITH THE CHANGE', 'SAVED'], rows)
+        print()
+        print(f'Total saved: {total_saved} min over {counted} case{"" if counted == 1 else "s"}.')
+    for note in skipped:
+        print(note)
+

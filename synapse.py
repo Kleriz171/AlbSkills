@@ -12,8 +12,8 @@ DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
 DEFAULT_ROADS = 'data/roads.txt'
 DEFAULT_HOSPITALS = 'data/hospitals.txt'
-ROUTE_USAGE = 'Usage: route from <city> | <case id>'
-MAP_USAGE = 'Usage: map load <path> | roads | hospitals'
+ROUTE_USAGE = 'Usage: route from <city> | <case id> | whatif <city> <ability>'
+MAP_USAGE = 'Usage: map load <path> | roads | hospitals | coverage'
 TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new | list | show <id> | update <id> | urgent'
 LESION_USAGE = 'Usage: lesion block <pipe>[, <pipe>...] | risk <area> | tree <pipe>'
 ATLAS_USAGE ='Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
@@ -136,12 +136,17 @@ def map_command(state, args):
             raise ValueError('Missing path. Usage: map load <path>')
         load_map_command(state, ' '.join(rest))
         return
-    if sub not in ('roads', 'hospitals'):
+    if sub not in ('roads', 'hospitals', 'coverage'):
         raise ValueError(f'Unknown map command "{sub}". {MAP_USAGE}')
     if state['roads'] is None:
         raise ValueError('No roads are loaded. Use: map load <path>')
     if sub == 'roads':
         commands.show_roads(state['roads'])
+    elif sub == 'coverage':
+        if not state['hospitals']:
+            raise ValueError('No hospitals are loaded. Use: map load <path>')
+        commands.show_coverage(routing.coverage(state['roads'], state['hospitals']),
+                               routing.FAR_LIMIT)
     else:
         commands.show_hospitals(state['hospitals'])
 
@@ -157,6 +162,11 @@ def route_command(state, args):
     if not hospitals:
         raise ValueError('No hospitals are loaded. Use: map load <path>')
 
+    if sub == 'whatif':
+        if len(rest) < 2:
+            raise ValueError('Missing city or ability. Usage: route whatif <city> <ability>')
+        triage.route_whatif(state, ' '.join(rest[:-1]), rest[-1])    # the last word is the ability
+        return
     if sub != 'from':                          # anything else is a case id: route P-0001
         if not state['cases_ok']:
             raise ValueError(f'{state["cases_path"]} could not be read, so no case can be saved.')
@@ -287,7 +297,7 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  route from <city>\n  help\n  exit')
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  help\n  exit')
         elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
                        'triage': triage_command, 'map': map_command, 'route': route_command}[words[0]]

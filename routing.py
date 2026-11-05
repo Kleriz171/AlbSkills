@@ -82,12 +82,27 @@ def hospital_routes(roads, hospitals, start):
 
 DRUG_AFTER_ARRIVAL = 30     # minutes from arrival to the drug (fixed by the PDF)
 CLOT_AFTER_ARRIVAL = 60     # minutes from arrival to clot removal (fixed by the PDF)
+TRANSFER_AFTER_ARRIVAL = 45     # Bonus 1: the transfer leaves the first hospital this long after arrival
+CLOT_AFTER_TRANSFER = 30        # Bonus 1: from arrival at the second hospital to clot removal
+
+
+class FirstStop:
+    """Bonus 1: the hospital where the drug is given before the transfer."""
+
+    def __init__(self, route, arrives, drug_at):
+        self.hospital = route.hospital
+        self.path = route.path
+        self.drive = route.minutes
+        self.arrives = arrives
+        self.drug_at = drug_at
 
 
 class Plan:
-    """Where the ambulance goes and when each step happens (minutes on the case timeline)."""
+    """Where the ambulance goes and when each step happens (minutes on the case timeline).
+    For a transfer plan, hospital/path/drive/leaves/arrives describe the LAST leg: the trip
+    from the first hospital to the clot removal hospital."""
 
-    def __init__(self, goal, route, leaves, drug_at, clot_at):
+    def __init__(self, goal, route, leaves, drug_at, clot_at, stop=None):
         self.goal = goal                    # 'clot', 'drug' or 'scan': the best treatment chosen
         self.hospital = route.hospital
         self.path = route.path
@@ -96,6 +111,17 @@ class Plan:
         self.arrives = leaves + route.minutes
         self.drug_at = drug_at              # None when the drug is not given here
         self.clot_at = clot_at              # None when there is no clot removal
+        self.stop = stop                    # a FirstStop for a transfer plan, else None
+
+
+class Decision:
+    """The answer: the chosen plan, and the two plans that were compared (Bonus 1)."""
+
+    def __init__(self, chosen, straight, transfer=None, reason=''):
+        self.chosen = chosen
+        self.straight = straight            # Plan A (straight to the best hospital)
+        self.transfer = transfer            # Plan B (drug first, then transfer), or None
+        self.reason = reason                # why the chosen plan won
 
 
 def plan_route(case, roads, hospitals):
@@ -105,7 +131,9 @@ def plan_route(case, roads, hospitals):
     drug_possible, computed in Mission 3). We try the best one first: clot removal,
     then the drug, then a scan. For each, a hospital counts only if it can do it AND
     the patient gets it in time. Among those, the fastest to reach wins; equally fast
-    hospitals keep the order of hospitals.txt."""
+    hospitals keep the order of hospitals.txt.
+
+    Bonus 1: a patient who needs clot removal has a second option, Plan B."""
     start = find_city(roads, case.city)
     if start is None:
         raise ValueError(f'The city of case {case.id}, "{case.city}", is not on the map.')
@@ -127,11 +155,119 @@ def plan_route(case, roads, hospitals):
         if clot_in_time(route):
             arrives = leaves + route.minutes
             drug_at = arrives + DRUG_AFTER_ARRIVAL if drug_in_time(route) else None
-            return Plan('clot', route, leaves, drug_at, arrives + CLOT_AFTER_ARRIVAL)
+            straight = Plan('clot', route, leaves, drug_at, arrives + CLOT_AFTER_ARRIVAL)
+            return compare_plans(straight, plan_transfer(case, roads, hospitals, routes, leaves))
     for route in routes:
         if drug_in_time(route):
-            return Plan('drug', route, leaves, leaves + route.minutes + DRUG_AFTER_ARRIVAL, None)
+            plan = Plan('drug', route, leaves, leaves + route.minutes + DRUG_AFTER_ARRIVAL, None)
+            return Decision(plan, plan)
     for route in routes:
         if route.hospital.can('CT'):
-            return Plan('scan', route, leaves, None, None)
+            plan = Plan('scan', route, leaves, None, None)
+            return Decision(plan, plan)
     raise ValueError(f'No hospital with a CT can be reached from {start}.')
+
+
+# ------------------------------------------------- Bonus 1: drug first, then transfer
+
+def plan_transfer(case, roads, hospitals, routes, leaves):
+    """Plan B: drive to the fastest hospital that can give the drug IN TIME, give it,
+    then transfer to the fastest clot removal hospital that is still in time.
+    Returns a Plan, or None when there is no such plan."""
+    if not (case.clot_possible and case.drug_possible):
+        return None
+    first = None
+    for route in routes:                                  # fastest first
+        arrives = leaves + route.minutes
+        if route.hospital.can('DRUG') and arrives + DRUG_AFTER_ARRIVAL <= case.drug_until:
+            first = route
+            break
+    if first is None or first.hospital.can('CLOT'):       # nothing to transfer to, or no transfer needed
+        return None
+
+    arrives_first = leaves + first.minutes
+    stop = FirstStop(first, arrives_first, arrives_first + DRUG_AFTER_ARRIVAL)
+    transfer_leaves = arrives_first + TRANSFER_AFTER_ARRIVAL
+
+    # the same road search, started from the first hospital's city
+    for route in hospital_routes(roads, hospitals, first.hospital.city):
+        if not route.hospital.can('CLOT') or route.hospital is first.hospital:
+            continue
+        clot_at = transfer_leaves + route.minutes + CLOT_AFTER_TRANSFER
+        if clot_at <= case.clot_until:                    # the exact limit still counts
+            return Plan('clot', route, transfer_leaves, stop.drug_at, clot_at, stop)
+    return None
+
+
+def compare_plans(straight, transfer):
+    """The rule from the PDF: if only one plan gives the drug in time, choose it.
+    Otherwise choose the plan with the earlier clot removal (a tie goes to Plan A)."""
+    if transfer is None:
+        return Decision(straight, straight)
+    a_drug = straight.drug_at is not None
+    b_drug = transfer.drug_at is not None
+    if a_drug != b_drug:
+        chosen = straight if a_drug else transfer
+        reason = 'Only this plan gives the drug in time.'
+    elif transfer.clot_at < straight.clot_at:
+        chosen = transfer
+        reason = f'The clot is removed {straight.clot_at - transfer.clot_at} min sooner.'
+    else:
+        chosen = straight
+        reason = ('Both plans give the drug in time, and Plan A removes the clot '
+                  f'{transfer.clot_at - straight.clot_at} min sooner.' if a_drug else
+                  'Plan A removes the clot sooner.')
+    return Decision(chosen, straight, transfer, reason)
+
+
+# ------------------------------------------------------- Bonus 2: coverage report
+
+FAR_LIMIT = 120             # clot removal further than this many minutes is marked FAR (the PDF)
+
+
+def nearest(routes, ability):
+    """The first route (fastest, then hospitals.txt order) to a hospital that has the ability."""
+    for route in routes:
+        if route.hospital.can(ability):
+            return route
+    return None
+
+
+def coverage(roads, hospitals):
+    """Bonus 2: for every city, the nearest drug hospital and the nearest clot removal hospital.
+    Returns [(city, drug route or None, clot route or None)] in the order of roads.txt.
+
+    One shortest-path search per city (hospital_routes), asked both questions at once:
+    a few milliseconds even for hundreds of cities. It is the same function route from
+    uses, so the report can never disagree with it."""
+    rows = []
+    for city in roads.cities:
+        routes = hospital_routes(roads, hospitals, city)
+        rows.append((city, nearest(routes, 'DRUG'), nearest(routes, 'CLOT')))
+    return rows
+
+
+def is_far(clot_route):
+    """No clot removal hospital at all counts as far."""
+    return clot_route is None or clot_route.minutes > FAR_LIMIT
+
+
+# ------------------------------------------------------------ Bonus 3: what if?
+
+def with_ability(hospitals, chosen, ability):
+    """A COPY of the hospital list in which 'chosen' can also do 'ability'.
+    The real list (and hospitals.txt) is never changed."""
+    from roadmap import Hospital
+    changed = []
+    for hospital in hospitals:
+        if hospital is chosen:
+            hospital = Hospital(hospital.name, hospital.city,
+                                hospital.abilities + [ability], hospital.line)
+        changed.append(hospital)
+    return changed
+
+
+def clot_drive(roads, hospitals, city):
+    """Minutes to the nearest clot removal hospital from this city, or None."""
+    route = nearest(hospital_routes(roads, hospitals, city), 'CLOT')
+    return None if route is None else route.minutes

@@ -259,3 +259,21 @@ def show_routes(city, routes, unreachable):
     print_table(['HOSPITAL', 'CITY', 'CAN DO', 'DRIVE', 'ROUTE'], rows)
     if unreachable:
         print(f'{unreachable} hospitals cannot be reached by road from {city}.')
+
+
+def show_coverage(rows, far_limit):
+    """map coverage: one row per city."""
+    table = []
+    far = 0
+    for city, drug, clot in rows:
+        drug_text = f'{drug.minutes} min ({drug.hospital.city})' if drug else 'none'
+        clot_text = f'{clot.minutes} min ({clot.hospital.city})' if clot else 'none'
+        if clot is None or clot.minutes > far_limit:
+            clot_text += ' FAR'
+            far += 1
+        table.append([city, drug_text, clot_text])
+    print_table(['CITY', 'NEAREST DRUG', 'NEAREST CLOT REMOVAL'], table)
+    if far == 1:
+        print(f'1 of {len(rows)} cities is more than {far_limit} min from clot removal.')
+    else:
+        print(f'{far} of {len(rows)} cities are more than {far_limit} min from clot removal.')
