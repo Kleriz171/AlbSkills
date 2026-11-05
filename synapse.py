@@ -8,7 +8,7 @@ from symptoms import SymptomError, load_symptoms
 DEFAULT_ATLAS = 'data/atlas.txt'
 DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
-TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new | list | show <id>'
+TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new | list | show <id> | update <id> | urgent'
 LESION_USAGE = 'Usage: lesion block <pipe>[, <pipe>...] | risk <area> | tree <pipe>'
 ATLAS_USAGE ='Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
 
@@ -118,7 +118,7 @@ def triage_command(state, args):
         load_symptoms_command(state, ' '.join(rest))
         return
 
-    if sub not in ('symptoms', 'new', 'list', 'show'):
+    if sub not in ('symptoms', 'new', 'list', 'show', 'update', 'urgent'):
         raise ValueError(f'Unknown triage command "{sub}". {TRIAGE_USAGE}')
     if sub == 'list':
         triage.show_list(state['cases'])
@@ -128,10 +128,21 @@ def triage_command(state, args):
             raise ValueError('Missing id. Usage: triage show <id>')
         triage.show_case(state['cases'], ' '.join(rest))
         return
+    if sub == 'urgent':
+        triage.show_urgent(state['cases'])
+        return
     if state['symptoms'] is None:
         raise ValueError('No symptom list is loaded. Use: triage load <path>')
 
-    if sub == 'symptoms':
+    if sub == 'update':
+        if not rest:
+            raise ValueError('Missing id. Usage: triage update <id>')
+        if state['atlas'] is None:
+            raise ValueError('No atlas is loaded. Use: atlas load <path>')
+        if not state['cases_ok']:
+            raise ValueError(f'{state["cases_path"]} could not be read, so no case can be saved.')
+        triage.update_case(state, ' '.join(rest))
+    elif sub == 'symptoms':
         commands.show_symptoms(state['symptoms'])
     elif sub == 'new':
         if state['atlas'] is None:
@@ -188,7 +199,7 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage load <path>\n  help\n  exit')
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  help\n  exit')
         elif words[0] in ('atlas', 'lesion', 'triage'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
                        'triage': triage_command}[words[0]]

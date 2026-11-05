@@ -4,6 +4,7 @@ Every answer is checked as soon as it is typed. A wrong answer prints
 "ERROR: ..." and asks the SAME question again, so nothing typed before is lost.
 """
 
+import copy
 import json
 import os
 import re
@@ -35,7 +36,9 @@ class Case:
         self.name = name
         self.age = age
         self.city = city
-        self.now = now                    # minutes after midnight, "today"
+        self.created = now                # when the case was opened (never changes)
+        self.now = now                    # the latest time recorded: grows with every update
+        self.history = []                 # Bonus 2: one entry per update
         self.last_seen = last_seen        # minutes after midnight, today or yesterday
         self.yesterday = yesterday        # True when last_seen was yesterday
         self.symptoms = symptoms          # list of codes, each one once, in typed order
@@ -304,13 +307,17 @@ def print_field(label, value):
     print(f'{label + ":":<24}{value}')
 
 
-def print_assessment(case):
-    print_field('Severity', f'{case.severity} ({case.band})')
+def print_closest(case):
     if case.closest:                                     # Bonus 1: only after an inexact match
         print('No exact match. Closest pipes:')
         width = max(len(name) for name, _ in case.closest)
         for name, percent in case.closest:
             print(f'     {name.ljust(width)}  {percent}%')
+
+
+def print_assessment(case):
+    print_field('Severity', f'{case.severity} ({case.band})')
+    print_closest(case)
     print_field('Likely blocked pipe', pipe_text(case))
     print_field('Drug possible', drug_text(case))
     print_field('Clot removal', clot_text(case))
@@ -328,7 +335,8 @@ def case_to_dict(case):
         'name': case.name,
         'age': case.age,
         'city': case.city,
-        'createdAt': format_time(case.now),
+        'createdAt': format_time(case.created),
+        'updatedAt': format_time(case.now),
         'lastSeenWell': format_time(case.last_seen),
         'lastSeenWellYesterday': case.yesterday,
         'symptoms': case.symptoms,
@@ -342,6 +350,7 @@ def case_to_dict(case):
         'drugPossible': case.drug_possible,
         'clotUntil': format_limit(case.clot_until),
         'clotPossible': case.clot_possible,
+        'history': case.history,
     }
 
 
@@ -358,6 +367,8 @@ def case_from_dict(data):
     case.match_percent = data.get('matchPercent')            # absent in files saved before Bonus 1
     case.closest = [(item['pipe'], item['percent']) for item in data.get('closestPipes', [])]
     case.clot_possible = data['clotPossible']
+    case.now = parse_time(data.get('updatedAt', data['createdAt']))   # absent before Bonus 2
+    case.history = data.get('history', [])
     set_times(case)
     return case
 
@@ -409,7 +420,123 @@ def show_case(cases, case_id):
     print(f'=== Case {case.id}: {case.name} ===')
     print_field('Age', case.age)
     print_field('City', case.city)
-    print_field('Created at', format_time(case.now))
+    print_field('Created at', format_time(case.created))
     print_field('Last seen well', seen)
     print_field('Symptoms', ', '.join(case.symptoms))
     print_assessment(case)
+    if case.history:                                     # Bonus 2
+        print('History:')
+        for entry in case.history:
+            print(f'  {entry["time"]}  added {", ".join(entry["added"]) or "nothing new"}; '
+                  f'severity {entry["severityWas"]} -> {entry["severityNow"]}; '
+                  f'pipe {entry["pipeWas"]} -> {entry["pipeNow"]}')
+
+
+# ------------------------------------------------ Bonus 2: the patient gets worse
+
+def find_case(cases, case_id):
+    for case in cases:
+        if case.id == case_id.upper():
+            return case
+    raise ValueError(f'No case called "{case_id}".')
+
+
+def update_case(state, case_id):
+    """triage update <id>: ask the new time and the new symptoms, add them to the case and
+    work everything out again. Every update is kept in the case history."""
+    case = find_case(state['cases'], case_id)
+    known = state['symptoms']
+
+    def check_later(text):
+        moment = parse_time(text)
+        if moment < case.now:                          # time cannot run backwards
+            raise ValueError(f'Time now ({format_time(moment)}) is earlier than the last '
+                             f'time recorded for this case ({format_time(case.now)}).')
+        return moment
+
+    try:
+        now = ask('Time now (HH:MM): ', check_later)
+        new_symptoms = ask('New symptoms (comma separated): ', make_symptom_check(known))
+    except EOFError:
+        print()
+        return None
+
+    backup = copy.deepcopy(case.__dict__)             # so a failed save can be undone
+    was_severity, was_band, was_pipe = case.severity, case.band, case.likely_pipe
+
+    added = [code for code in new_symptoms if code not in case.symptoms]
+    case.symptoms = case.symptoms + added             # a symptom already there counts once
+    case.now = now
+    assess(case, known, state['atlas'])
+    case.history.append({
+        'time': format_time(now),
+        'added': added,
+        'severityWas': was_severity,
+        'severityNow': case.severity,
+        'pipeWas': was_pipe or 'unknown',
+        'pipeNow': case.likely_pipe or 'unknown',
+    })
+
+    try:
+        save_cases(state['cases_path'], state['cases'])
+    except OSError:
+        case.__dict__.clear()
+        case.__dict__.update(backup)                  # not saved = not updated
+        print(f'ERROR: Could not save the case to {state["cases_path"]}.')
+        return None
+
+    print(f'SUCCESS: Case {case.id} updated and saved.')
+    severity = f'{case.severity} ({case.band})'
+    if case.severity != was_severity:
+        severity += f', was {was_severity}'
+    print_field('Severity', severity)
+    print_closest(case)
+    pipe = pipe_text(case)
+    if case.likely_pipe != was_pipe:
+        pipe += f', was {was_pipe or "unknown"}'
+    print_field('Likely blocked pipe', pipe)
+    print_field('Drug possible', drug_text(case))
+    print_field('Clot removal', clot_text(case))
+    return case
+
+
+# --------------------------------------------------- Bonus 3: most urgent first
+
+def print_rows(rows):
+    """Indented, aligned columns, no header."""
+    widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
+    for row in rows:
+        print('   ' + '  '.join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
+
+
+def show_urgent(cases):
+    """triage urgent: ask the time now, list the cases that can still be treated,
+    the shortest time left first. Uses the time typed here, not each case's own time."""
+    if not cases:
+        print('No cases yet.')
+        return
+    try:
+        now = ask('Time now (HH:MM): ', parse_time)
+    except EOFError:
+        print()
+        return
+
+    with_drug = []                                    # (minutes left, case)
+    clot_only = []
+    for case in cases:
+        if now <= case.drug_until:                    # equal to the limit still counts
+            with_drug.append((case.drug_until - now, case, case.drug_until))
+        elif now <= case.clot_until and case.big_pipe and case.severity >= CLOT_MIN_SEVERITY:
+            clot_only.append((case.clot_until - now, case, case.clot_until))
+
+    if not with_drug and not clot_only:
+        print('No case can be treated any more.')
+        return
+    for title, group in (('Drug still possible:', with_drug),
+                         ('Only clot removal still possible:', clot_only)):
+        if not group:
+            continue
+        print(title)
+        group.sort(key=lambda item: item[0])          # shortest time left first (stable)
+        print_rows([[f'{case.id} {case.name}', f'until {format_limit(until)}',
+                     f'{format_left(left)} left'] for left, case, until in group])
