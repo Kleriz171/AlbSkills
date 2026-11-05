@@ -7,6 +7,7 @@ Every answer is checked as soon as it is typed. A wrong answer prints
 import json
 import os
 import re
+from fractions import Fraction
 
 import lesion
 from commands import print_table
@@ -19,6 +20,8 @@ MINUTES_PER_DAY = 24 * 60
 DRUG_WINDOW = 4 * 60 + 30            # the drug works up to 4 h 30 min after last seen well
 CLOT_WINDOW = 24 * 60                # clot removal works up to 24 h after last seen well
 CLOT_MIN_SEVERITY = 5                # clot removal needs severity 5 or more
+CLOSE_ENOUGH = Fraction(60, 100)       # Bonus 1: a close match counts from 60% up
+CLOSEST_SHOWN = 3                    # Bonus 1: how many near misses are listed
 BANDS = ((10, 'severe'), (5, 'moderate'), (0, 'minor'))    # (lowest severity, band name)
 TIME_FORMAT = re.compile(r'(\d\d):(\d\d)')         # exactly HH:MM
 
@@ -46,6 +49,8 @@ class Case:
         self.clot_time_ok = False         # the time rule on its own
         self.likely_pipe = None           # pipe NAME, or None when unknown (Goal 4)
         self.big_pipe = False
+        self.match_percent = None         # Bonus 1: set only when the match was not exact
+        self.closest = []                 # Bonus 1: [(pipe name, percent)], best first
         self.clot_possible = False        # time AND big pipe AND severity
 
 
@@ -166,26 +171,48 @@ def format_time(minutes):
 
 # ------------------------------------------------- Goal 4: the likely blocked pipe
 
+def similarity(wanted, shown):
+    """Bonus 1: symptoms in both lists / symptoms in either list, as an exact fraction
+    (a Fraction never has rounding errors, so 60% is really 60%)."""
+    return Fraction(len(wanted & shown), len(wanted | shown))
+
+
+def whole_percent(fraction):
+    return int(fraction * 100 + Fraction(1, 2))          # 2/3 -> 67, rounding halves up
+
+
 def find_likely_pipe(atlas, symptoms):
-    """Work backwards from the symptoms to ONE pipe, or None.
+    """Work backwards from the symptoms to ONE pipe.
+    Returns (pipe or None, percent or None, closest).
+      Exact match         -> (pipe, None, [])
+      No exact, but close -> (pipe, percent, top 3 [(name, percent)])
+      Nothing close       -> (None, None, top 3)
 
     We write no new blood rule. For each pipe we ask the Mission 2 engine
-    (lesion.simulate) "what symptoms appear if ONLY this pipe is blocked?" and keep
-    the pipes whose answer is EXACTLY the patient's symptoms, in any order.
-    Several match? The one that leaves the fewest pipes dry wins; still tied, the
-    one listed first in the atlas (min() keeps the first of equal items)."""
+    (lesion.simulate) "what symptoms appear if ONLY this pipe is blocked?" and score
+    how alike that is to the patient's symptoms. 100% means exactly the same set.
+    Best score wins; a tie goes to the pipe that leaves the fewest pipes dry; still
+    tied, the one listed first in the atlas (sorted() keeps the original order)."""
     wanted = set(symptoms)
     heart = atlas.find_heart()
-    matches = []
+    scored = []
     for pipe in atlas.pipes.values():               # atlas file order
         if pipe is heart:
             continue                                # the heart can never be blocked
         result = lesion.simulate(atlas, [pipe])
-        if set(result.symptoms) == wanted:
-            matches.append((len(result.dry_pipes), pipe))
-    if not matches:
-        return None
-    return min(matches, key=lambda match: match[0])[1]
+        scored.append((similarity(wanted, set(result.symptoms)), len(result.dry_pipes), pipe))
+    if not scored:
+        return None, None, []
+
+    ranked = sorted(scored, key=lambda item: (-item[0], item[1]))
+    best_score, _, best_pipe = ranked[0]
+    if best_score == 1:
+        return best_pipe, None, []                  # exact match: nothing more to show
+
+    closest = [(pipe.name, whole_percent(score)) for score, _, pipe in ranked[:CLOSEST_SHOWN]]
+    if best_score >= CLOSE_ENOUGH:
+        return best_pipe, whole_percent(best_score), closest
+    return None, None, closest
 
 
 # ------------------------------------------------------- Goal 3: score and time
@@ -210,7 +237,7 @@ def assess(case, known, atlas):
 
     set_times(case)
 
-    pipe = find_likely_pipe(atlas, case.symptoms)
+    pipe, case.match_percent, case.closest = find_likely_pipe(atlas, case.symptoms)
     case.likely_pipe = pipe.name if pipe else None
     case.big_pipe = pipe is not None and pipe.size == 'big'
     case.clot_possible = (case.clot_time_ok and case.big_pipe
@@ -264,8 +291,13 @@ def clot_text(case):
 
 def pipe_text(case):
     if case.likely_pipe is None:
+        if case.closest:
+            return 'unknown, no pipe matches at 60% or more'
         return 'unknown, no single pipe matches these symptoms exactly'
-    return f'{case.likely_pipe} ({"big" if case.big_pipe else "small"})'
+    text = f'{case.likely_pipe} ({"big" if case.big_pipe else "small"})'
+    if case.match_percent is not None:
+        text += f', {case.match_percent}% match'
+    return text
 
 
 def print_field(label, value):
@@ -274,6 +306,11 @@ def print_field(label, value):
 
 def print_assessment(case):
     print_field('Severity', f'{case.severity} ({case.band})')
+    if case.closest:                                     # Bonus 1: only after an inexact match
+        print('No exact match. Closest pipes:')
+        width = max(len(name) for name, _ in case.closest)
+        for name, percent in case.closest:
+            print(f'     {name.ljust(width)}  {percent}%')
     print_field('Likely blocked pipe', pipe_text(case))
     print_field('Drug possible', drug_text(case))
     print_field('Clot removal', clot_text(case))
@@ -299,6 +336,8 @@ def case_to_dict(case):
         'band': case.band,
         'likelyPipe': case.likely_pipe,
         'bigPipe': case.big_pipe,
+        'matchPercent': case.match_percent,
+        'closestPipes': [{'pipe': name, 'percent': percent} for name, percent in case.closest],
         'drugUntil': format_limit(case.drug_until),
         'drugPossible': case.drug_possible,
         'clotUntil': format_limit(case.clot_until),
@@ -316,6 +355,8 @@ def case_from_dict(data):
     case.band = data['band']
     case.likely_pipe = data['likelyPipe']
     case.big_pipe = data['bigPipe']
+    case.match_percent = data.get('matchPercent')            # absent in files saved before Bonus 1
+    case.closest = [(item['pipe'], item['percent']) for item in data.get('closestPipes', [])]
     case.clot_possible = data['clotPossible']
     set_times(case)
     return case
