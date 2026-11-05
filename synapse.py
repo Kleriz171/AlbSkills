@@ -109,6 +109,8 @@ def triage_command(state, args):
     if sub == 'symptoms':
         commands.show_symptoms(state['symptoms'])
     elif sub == 'new':
+        if state['atlas'] is None:
+            raise ValueError('No atlas is loaded. Use: atlas load <path>')
         triage.new_case(state)
 
 

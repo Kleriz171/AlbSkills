@@ -6,6 +6,8 @@ Every answer is checked as soon as it is typed. A wrong answer prints
 
 import re
 
+import lesion
+
 MAX_AGE = 120
 
 # The rules of Goal 3. They are numbers from the PDF, kept in one place,
@@ -38,7 +40,9 @@ class Case:
         self.drug_until = 0
         self.drug_possible = False
         self.clot_until = 0
-        self.clot_time_ok = False         # time limit only; Goal 4 adds the "big pipe" rule
+        self.clot_time_ok = False         # the time rule on its own
+        self.likely_pipe = None           # Pipe object, or None when unknown (Goal 4)
+        self.clot_possible = False        # time AND big pipe AND severity
 
 
 # ------------------------------------------------------------------ checks
@@ -137,7 +141,7 @@ def new_case(state):
     case_id = format_case_id(state['next_case_number'])
     state['next_case_number'] += 1                # the number is used up, never given out again
     case = Case(case_id, name, age, city, now, last_seen, yesterday, symptoms)
-    assess(case, known)
+    assess(case, known, state['atlas'])
     state['cases'].append(case)
     print(f'SUCCESS: Case {case.id} created.')
     print_assessment(case)
@@ -147,6 +151,30 @@ def new_case(state):
 def format_time(minutes):
     """490 -> '08:10'"""
     return f'{minutes // 60:02d}:{minutes % 60:02d}'
+
+
+# ------------------------------------------------- Goal 4: the likely blocked pipe
+
+def find_likely_pipe(atlas, symptoms):
+    """Work backwards from the symptoms to ONE pipe, or None.
+
+    We write no new blood rule. For each pipe we ask the Mission 2 engine
+    (lesion.simulate) "what symptoms appear if ONLY this pipe is blocked?" and keep
+    the pipes whose answer is EXACTLY the patient's symptoms, in any order.
+    Several match? The one that leaves the fewest pipes dry wins; still tied, the
+    one listed first in the atlas (min() keeps the first of equal items)."""
+    wanted = set(symptoms)
+    heart = atlas.find_heart()
+    matches = []
+    for pipe in atlas.pipes.values():               # atlas file order
+        if pipe is heart:
+            continue                                # the heart can never be blocked
+        result = lesion.simulate(atlas, [pipe])
+        if set(result.symptoms) == wanted:
+            matches.append((len(result.dry_pipes), pipe))
+    if not matches:
+        return None
+    return min(matches, key=lambda match: match[0])[1]
 
 
 # ------------------------------------------------------- Goal 3: score and time
@@ -164,8 +192,8 @@ def timeline(clock, yesterday=False):
     return clock - MINUTES_PER_DAY if yesterday else clock
 
 
-def assess(case, known):
-    """Fill in severity, band and the two time limits. known: code -> Symptom."""
+def assess(case, known, atlas):
+    """Fill in severity, band, the likely pipe and the two time limits. known: code -> Symptom."""
     case.severity = sum(known[code].points for code in case.symptoms)
     case.band = band_for(case.severity)
 
@@ -174,6 +202,11 @@ def assess(case, known):
     case.drug_possible = case.now <= case.drug_until        # equal to the limit still counts
     case.clot_until = seen + CLOT_WINDOW
     case.clot_time_ok = case.now <= case.clot_until
+
+    case.likely_pipe = find_likely_pipe(atlas, case.symptoms)
+    big_pipe = case.likely_pipe is not None and case.likely_pipe.size == 'big'
+    case.clot_possible = (case.clot_time_ok and big_pipe
+                          and case.severity >= CLOT_MIN_SEVERITY)
 
 
 def format_limit(moment):
@@ -200,12 +233,21 @@ def drug_text(case):
 
 
 def clot_text(case):
-    """Goal 3 knows the time rule and the severity rule. The 'big pipe' rule is Goal 4."""
+    if case.clot_possible:
+        return f'yes, until {format_limit(case.clot_until)}'
     if not case.clot_time_ok:
         return f'no, the time limit passed at {format_limit(case.clot_until)}'
-    if case.severity < CLOT_MIN_SEVERITY:
-        return f'no, the severity is below {CLOT_MIN_SEVERITY}'
-    return f'time allows it, until {format_limit(case.clot_until)} (the blocked pipe is not checked yet)'
+    if case.likely_pipe is None:
+        return 'no, the blocked pipe is unknown'
+    if case.likely_pipe.size != 'big':
+        return 'no, the blocked pipe is not big enough for the tool'
+    return f'no, the severity is below {CLOT_MIN_SEVERITY}'
+
+
+def pipe_text(case):
+    if case.likely_pipe is None:
+        return 'unknown, no single pipe matches these symptoms exactly'
+    return f'{case.likely_pipe.name} ({case.likely_pipe.size})'
 
 
 def print_field(label, value):
@@ -214,5 +256,6 @@ def print_field(label, value):
 
 def print_assessment(case):
     print_field('Severity', f'{case.severity} ({case.band})')
+    print_field('Likely blocked pipe', pipe_text(case))
     print_field('Drug possible', drug_text(case))
     print_field('Clot removal', clot_text(case))
