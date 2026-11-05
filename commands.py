@@ -222,3 +222,25 @@ def show_symptoms(symptoms):
     rows = [[s.code, str(s.points), s.description] for s in symptoms.values()]
     print_table(['CODE', 'POINTS', 'WHAT THE CREW SEES'], rows)
     print(f'{len(rows)} symptoms')
+
+
+# ------------------------------------------------------------- Mission 4: the map
+
+def show_roads(roads):
+    """map roads: every road once, in the order the file names them."""
+    rows = []
+    seen = set()
+    for city in roads.cities:
+        for neighbour, minutes in roads.links[city].items():
+            if (neighbour, city) not in seen:
+                seen.add((city, neighbour))
+                rows.append([city, neighbour, str(minutes)])
+    print_table(['CITY', 'CITY', 'MINUTES'], rows)
+    print(f'{len(rows)} roads, {len(roads.cities)} cities')
+
+
+def show_hospitals(hospitals):
+    """map hospitals: in the order of hospitals.txt."""
+    rows = [[h.name, h.city, ', '.join(h.abilities)] for h in hospitals]
+    print_table(['HOSPITAL', 'CITY', 'CAN DO'], rows)
+    print(f'{len(rows)} hospitals')

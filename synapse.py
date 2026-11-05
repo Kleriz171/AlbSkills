@@ -2,12 +2,16 @@
 
 import commands
 from loader import AtlasError, load_atlas
+import roadmap
 import triage
 from symptoms import SymptomError, load_symptoms
 
 DEFAULT_ATLAS = 'data/atlas.txt'
 DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
+DEFAULT_ROADS = 'data/roads.txt'
+DEFAULT_HOSPITALS = 'data/hospitals.txt'
+MAP_USAGE = 'Usage: map load <path> | roads | hospitals'
 TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new | list | show <id> | update <id> | urgent'
 LESION_USAGE = 'Usage: lesion block <pipe>[, <pipe>...] | risk <area> | tree <pipe>'
 ATLAS_USAGE ='Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
@@ -88,6 +92,56 @@ def load_symptoms_command(state, path):
     state['symptoms'] = symptoms
     state['symptoms_path'] = path
     print(f'SUCCESS: Symptoms loaded from {path}: {len(symptoms)} symptoms.')
+
+
+def load_map_command(state, path):
+    """Load a roads file OR a hospitals file (the first record says which). All or nothing:
+    if anything is wrong, every problem is reported and the old data is kept."""
+    kind = None
+    try:
+        records = roadmap.read_records(path)
+        kind = roadmap.kind_of_file(records, path)
+        if kind == 'roads':
+            roads = roadmap.build_roads(records, path, state['hospitals'], state['hospitals_path'])
+        else:
+            if state['roads'] is None:
+                raise roadmap.MapError(['No roads are loaded yet. Load a roads file first.'])
+            hospitals = roadmap.build_hospitals(records, path, state['roads'])
+    except roadmap.MapError as error:
+        for message in error.messages:
+            print(f'ERROR: {message}')
+        old = state.get(f'{kind}_path') if kind else None
+        print(f'{kind.capitalize() if kind else "Map file"} not loaded.'
+              + (f' Still using {old}.' if old else ''))
+        return
+
+    if kind == 'roads':
+        state['roads'], state['roads_path'] = roads, path
+        print(f'SUCCESS: Roads loaded from {path}: {len(roads.cities)} cities, '
+              f'{roads.road_count()} roads.')
+    else:
+        state['hospitals'], state['hospitals_path'] = hospitals, path
+        print(f'SUCCESS: Hospitals loaded from {path}: {len(hospitals)} hospitals.')
+
+
+def map_command(state, args):
+    """Handle everything after the word 'map'."""
+    if not args:
+        raise ValueError(f'Missing subcommand. {MAP_USAGE}')
+    sub, rest = args[0], args[1:]
+    if sub == 'load':
+        if not rest:
+            raise ValueError('Missing path. Usage: map load <path>')
+        load_map_command(state, ' '.join(rest))
+        return
+    if sub not in ('roads', 'hospitals'):
+        raise ValueError(f'Unknown map command "{sub}". {MAP_USAGE}')
+    if state['roads'] is None:
+        raise ValueError('No roads are loaded. Use: map load <path>')
+    if sub == 'roads':
+        commands.show_roads(state['roads'])
+    else:
+        commands.show_hospitals(state['hospitals'])
 
 
 def load_cases_command(state):
@@ -180,11 +234,14 @@ def lesion_command(state, args):
 def main():
     state = {'atlas': None, 'path': None, 'symptoms': None, 'symptoms_path': None,
              'cases': [], 'next_case_number': 1,
-             'cases_path': DEFAULT_CASES, 'cases_ok': True}     # what the program currently remembers
+             'cases_path': DEFAULT_CASES, 'cases_ok': True,
+             'roads': None, 'roads_path': None, 'hospitals': [], 'hospitals_path': None}     # what the program currently remembers
     print('Synapse 1.0 - type "help" to see all commands')
     load_command(state, DEFAULT_ATLAS)        # the atlas loads when the program starts
     load_symptoms_command(state, DEFAULT_SYMPTOMS)   # so does the symptom list
     load_cases_command(state)                 # and every saved case
+    load_map_command(state, DEFAULT_ROADS)    # and the map: roads first,
+    load_map_command(state, DEFAULT_HOSPITALS)   # then hospitals (they need the roads)
 
     while True:
         try:
@@ -199,10 +256,10 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  help\n  exit')
-        elif words[0] in ('atlas', 'lesion', 'triage'):
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  help\n  exit')
+        elif words[0] in ('atlas', 'lesion', 'triage', 'map'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
-                       'triage': triage_command}[words[0]]
+                       'triage': triage_command, 'map': map_command}[words[0]]
             try:
                 handler(state, words[1:])
             except ValueError as error:       # a mistake by the user, not a crash
