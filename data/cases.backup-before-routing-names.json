@@ -1,0 +1,341 @@
+{
+    "cases": [
+        {
+            "id": "P-0001",
+            "name": "Kleris",
+            "age": 18,
+            "city": "Tirana",
+            "createdAt": "13:59",
+            "updatedAt": "13:59",
+            "lastSeenWell": "10:12",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "cannot-speak",
+                "cannot-understand"
+            ],
+            "severity": 4,
+            "band": "minor",
+            "likelyPipe": null,
+            "bigPipe": false,
+            "matchPercent": null,
+            "closestPipes": [],
+            "drugUntil": "14:42",
+            "drugPossible": true,
+            "clotUntil": "10:12 tomorrow",
+            "clotPossible": false,
+            "history": [],
+            "route": {
+                "goal": "drug",
+                "hospital": "Qendra Neuro Tirana",
+                "path": [
+                    "Tirana"
+                ],
+                "driveMinutes": 10,
+                "leaves": "13:59",
+                "arrives": "14:09",
+                "drugAt": "14:39",
+                "clotRemovalAt": null
+            },
+            "hospitalStay": {
+                "hospital": "Qendra Neuro Tirana",
+                "arrives": "14:09",
+                "scanAt": "14:09",
+                "drugAt": "14:39",
+                "doorToDrugMinutes": 30,
+                "clotRemovalAt": null
+            }
+        },
+        {
+            "id": "P-0002",
+            "name": "Klajdi",
+            "age": 23,
+            "city": "Tirana",
+            "createdAt": "14:48",
+            "updatedAt": "14:48",
+            "lastSeenWell": "14:00",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "cannot-understand",
+                "cannot-speak"
+            ],
+            "severity": 4,
+            "band": "minor",
+            "likelyPipe": null,
+            "bigPipe": false,
+            "matchPercent": null,
+            "closestPipes": [
+                {
+                    "pipe": "left-middle-bottom",
+                    "percent": 50
+                },
+                {
+                    "pipe": "left-middle",
+                    "percent": 50
+                },
+                {
+                    "pipe": "left-neck",
+                    "percent": 40
+                }
+            ],
+            "drugUntil": "18:30",
+            "drugPossible": true,
+            "clotUntil": "14:00 tomorrow",
+            "clotPossible": false,
+            "history": [],
+            "route": null,
+            "hospitalStay": null
+        },
+        {
+            "id": "P-0003",
+            "name": "Elira Hysa",
+            "age": 58,
+            "city": "Durres",
+            "createdAt": "07:45",
+            "updatedAt": "07:45",
+            "lastSeenWell": "06:50",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "cannot-speak",
+                "right-arm-weak",
+                "right-face-droop"
+            ],
+            "severity": 6,
+            "band": "moderate",
+            "likelyPipe": "left-middle-top",
+            "bigPipe": false,
+            "matchPercent": null,
+            "closestPipes": [],
+            "drugUntil": "11:20",
+            "drugPossible": true,
+            "clotUntil": "06:50 tomorrow",
+            "clotPossible": false,
+            "history": [],
+            "route": null,
+            "hospitalStay": null
+        },
+        {
+            "id": "P-0004",
+            "name": "Gentian Basha",
+            "age": 49,
+            "city": "Elbasan",
+            "createdAt": "09:15",
+            "updatedAt": "09:15",
+            "lastSeenWell": "08:40",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "right-leg-weak"
+            ],
+            "severity": 3,
+            "band": "minor",
+            "likelyPipe": "left-front",
+            "bigPipe": false,
+            "matchPercent": null,
+            "closestPipes": [],
+            "drugUntil": "13:10",
+            "drugPossible": true,
+            "clotUntil": "08:40 tomorrow",
+            "clotPossible": false,
+            "history": [],
+            "route": null,
+            "hospitalStay": null
+        },
+        {
+            "id": "P-0005",
+            "name": "Mirela Shehu",
+            "age": 71,
+            "city": "Lezhe",
+            "createdAt": "11:30",
+            "updatedAt": "11:30",
+            "lastSeenWell": "10:20",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "blind-on-right"
+            ],
+            "severity": 2,
+            "band": "minor",
+            "likelyPipe": "left-back",
+            "bigPipe": false,
+            "matchPercent": null,
+            "closestPipes": [],
+            "drugUntil": "14:50",
+            "drugPossible": true,
+            "clotUntil": "10:20 tomorrow",
+            "clotPossible": false,
+            "history": [],
+            "route": null,
+            "hospitalStay": null
+        },
+        {
+            "id": "P-0006",
+            "name": "Besart Dervishi",
+            "age": 66,
+            "city": "Korce",
+            "createdAt": "13:05",
+            "updatedAt": "13:05",
+            "lastSeenWell": "12:00",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "drowsy",
+                "blind-on-right",
+                "blind-on-left",
+                "forgets-new-things"
+            ],
+            "severity": 8,
+            "band": "moderate",
+            "likelyPipe": "back-main",
+            "bigPipe": true,
+            "matchPercent": null,
+            "closestPipes": [],
+            "drugUntil": "16:30",
+            "drugPossible": true,
+            "clotUntil": "12:00 tomorrow",
+            "clotPossible": true,
+            "history": [],
+            "route": null,
+            "hospitalStay": null
+        },
+        {
+            "id": "P-0007",
+            "name": "Arta Kola",
+            "age": 74,
+            "city": "Peshkopi",
+            "createdAt": "06:10",
+            "updatedAt": "06:10",
+            "lastSeenWell": "21:40",
+            "lastSeenWellYesterday": true,
+            "symptoms": [
+                "left-arm-weak",
+                "left-face-droop",
+                "ignores-left-side",
+                "left-leg-weak"
+            ],
+            "severity": 9,
+            "band": "moderate",
+            "likelyPipe": "right-neck",
+            "bigPipe": true,
+            "matchPercent": null,
+            "closestPipes": [],
+            "drugUntil": "02:10",
+            "drugPossible": false,
+            "clotUntil": "21:40",
+            "clotPossible": true,
+            "history": [],
+            "route": null,
+            "hospitalStay": null
+        },
+        {
+            "id": "P-0008",
+            "name": "Ilir Prifti",
+            "age": 62,
+            "city": "Vlore",
+            "createdAt": "08:20",
+            "updatedAt": "08:20",
+            "lastSeenWell": "07:10",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "cannot-speak",
+                "cannot-understand",
+                "right-arm-weak",
+                "right-face-droop",
+                "right-leg-weak"
+            ],
+            "severity": 11,
+            "band": "severe",
+            "likelyPipe": "left-neck",
+            "bigPipe": true,
+            "matchPercent": null,
+            "closestPipes": [],
+            "drugUntil": "11:40",
+            "drugPossible": true,
+            "clotUntil": "07:10 tomorrow",
+            "clotPossible": true,
+            "history": [],
+            "route": null,
+            "hospitalStay": null
+        },
+        {
+            "id": "P-0009",
+            "name": "Flutura Leka",
+            "age": 80,
+            "city": "Gjirokaster",
+            "createdAt": "10:00",
+            "updatedAt": "10:00",
+            "lastSeenWell": "09:30",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "falls-over"
+            ],
+            "severity": 2,
+            "band": "minor",
+            "likelyPipe": null,
+            "bigPipe": false,
+            "matchPercent": null,
+            "closestPipes": [
+                {
+                    "pipe": "left-middle-top",
+                    "percent": 0
+                },
+                {
+                    "pipe": "left-middle-bottom",
+                    "percent": 0
+                },
+                {
+                    "pipe": "left-front",
+                    "percent": 0
+                }
+            ],
+            "drugUntil": "14:00",
+            "drugPossible": true,
+            "clotUntil": "09:30 tomorrow",
+            "clotPossible": false,
+            "history": [],
+            "route": null,
+            "hospitalStay": null
+        },
+        {
+            "id": "P-0010",
+            "name": "Dritan Meta",
+            "age": 55,
+            "city": "Tirana",
+            "createdAt": "09:50",
+            "updatedAt": "09:50",
+            "lastSeenWell": "09:20",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "cannot-understand"
+            ],
+            "severity": 2,
+            "band": "minor",
+            "likelyPipe": "left-middle-bottom",
+            "bigPipe": false,
+            "matchPercent": null,
+            "closestPipes": [],
+            "drugUntil": "13:50",
+            "drugPossible": true,
+            "clotUntil": "09:20 tomorrow",
+            "clotPossible": false,
+            "history": [],
+            "route": {
+                "plan": "straight",
+                "goal": "drug",
+                "hospital": "Qendra Neuro Tirana",
+                "path": [
+                    "Tirana"
+                ],
+                "driveMinutes": 10,
+                "leaves": "09:50",
+                "arrives": "10:00",
+                "drugAt": "10:30",
+                "clotRemovalAt": null
+            },
+            "hospitalStay": {
+                "hospital": "Qendra Neuro Tirana",
+                "arrives": "10:00",
+                "scanAt": "10:10",
+                "drugAt": "10:40",
+                "doorToDrugMinutes": 40,
+                "clotRemovalAt": null
+            }
+        }
+    ]
+}

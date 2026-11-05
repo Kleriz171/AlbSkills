@@ -26,7 +26,9 @@ MINUTES_PER_DAY = 24 * 60
 CLOT_MIN_SEVERITY = 5           # clot removal needs severity 5 or more (and a big pipe)
 
 EVENT_FIELDS = 7
-PATIENT_TYPES = ('stroke',)
+PATIENT_TYPES = ('stroke', 'head')
+HEAD_SCAN_WITHIN = 60           # a head injury must be scanned within this of arrival
+SCAN_LATEST_FOR_DRUG = SCAN_MINUTES + DRUG_AFTER_SCAN   # drug limit - 30 min = the last moment the scan can start
 TIME_FORMAT = re.compile(r'(\d\d):(\d\d)')
 
 
@@ -40,7 +42,8 @@ class UnitError(Exception):
 
 class Patient:
     def __init__(self, patient_id, arrival, severity, drug_limit, needs_clot, source,
-                 case=None, transferred_from=None):
+                 case=None, transferred_from=None, kind='stroke'):
+        self.kind = kind                    # 'stroke' or 'head' (a head injury: scan only)
         self.id = patient_id
         self.arrival = arrival              # minutes on the day's timeline (0 = midnight today)
         self.severity = severity
@@ -59,6 +62,15 @@ class Stay:
         self.scan_start = None
         self.drug_at = None
         self.clot_start = None
+
+    @property
+    def scan_wait(self):
+        return None if self.scan_start is None else self.scan_start - self.patient.arrival
+
+    @property
+    def late_head_scan(self):
+        return (self.patient.kind == 'head' and self.scan_start is not None
+                and self.scan_wait > HEAD_SCAN_WITHIN)
 
     @property
     def door_to_drug(self):
@@ -100,6 +112,7 @@ def read_events(filename, taken_ids=()):
 
         _, time_text, patient_id, kind, severity_text, seen_text, pipe_text = parts
         problems = []
+        head = kind == 'head'                           # a head injury has '-' in the last three fields
 
         arrival = parse_clock(time_text)
         if arrival is None:
@@ -113,13 +126,15 @@ def read_events(filename, taken_ids=()):
             problems.append(f'patient {patient_id} is already a case in your database.')
         if kind not in PATIENT_TYPES:
             problems.append(f'unknown patient type "{kind}". Expected {", ".join(PATIENT_TYPES)}.')
-        if not (severity_text.isascii() and severity_text.isdigit()):
-            problems.append(f'severity must be a whole number, found "{severity_text}".')
-        seen = parse_clock(seen_text)
-        if seen is None:
-            problems.append(f'invalid time "{seen_text}". Use HH:MM.')
-        if pipe_text not in ('yes', 'no'):
-            problems.append('big pipe must be yes or no.')
+        seen = None
+        if not head:
+            if not (severity_text.isascii() and severity_text.isdigit()):
+                problems.append(f'severity must be a whole number, found "{severity_text}".')
+            seen = parse_clock(seen_text)
+            if seen is None:
+                problems.append(f'invalid time "{seen_text}". Use HH:MM.')
+            if pipe_text not in ('yes', 'no'):
+                problems.append('big pipe must be yes or no.')
 
         for problem in problems:
             errors.append(f'{where}: {problem}')
@@ -128,6 +143,9 @@ def read_events(filename, taken_ids=()):
         if problems:
             continue
 
+        if head:
+            patients.append(Patient(patient_id, arrival, 0, None, False, 'file', kind='head'))
+            continue
         severity = int(severity_text)
         if seen > arrival:                              # the file has no "yesterday" column:
             seen -= MINUTES_PER_DAY                     # last seen later than the arrival means yesterday
@@ -157,6 +175,19 @@ def patients_from_cases(cases, parse_limit):
 
 
 # ---------------------------------------------------------- Goal 2: the morning
+
+def deadline_key(patient):
+    """Bonus 1: who is scanned next when several wait. Smallest key goes first."""
+    if patient.kind == 'stroke' and patient.drug_limit - SCAN_LATEST_FOR_DRUG >= patient.arrival:
+        deadline = patient.drug_limit - SCAN_LATEST_FOR_DRUG    # the last moment the scan can start
+    else:
+        deadline = patient.arrival + HEAD_SCAN_WITHIN           # nothing to save: a fair wait
+    return (deadline, -patient.severity, patient.arrival, patient.id)
+
+
+ORDERS = {'fcfs': None, 'deadline': deadline_key}
+ORDER_NAMES = {'fcfs': 'first come, first served', 'deadline': 'deadline first'}
+
 
 def run_morning(patients, scanners=1, key=None):
     """Replay the morning. Returns {patient id: Stay}.
@@ -196,6 +227,8 @@ def run_morning(patients, scanners=1, key=None):
     ready = []                                              # (ready time, id) for the clot room
     for patient in patients:
         stay = stays[patient.id]
+        if patient.kind == 'head':
+            continue                                        # a head injury only needs the scan
         if patient.transferred_from is None:
             drug_time = scan_end[patient.id] + DRUG_AFTER_SCAN
             if drug_time <= patient.drug_limit:
@@ -218,7 +251,8 @@ def run_morning(patients, scanners=1, key=None):
 def could_get_drug(stay):
     """The drug was still possible when the patient arrived (and not given before)."""
     patient = stay.patient
-    return patient.transferred_from is None and patient.drug_limit >= patient.arrival
+    return (patient.kind == 'stroke' and patient.transferred_from is None
+            and patient.drug_limit >= patient.arrival)
 
 
 def collect_events(stays, clock):
@@ -232,7 +266,8 @@ def collect_events(stays, clock):
             arrives += f' (transferred, drug already given at {patient.transferred_from})'
         events.append((patient.arrival, 0, patient.id, arrives))
         if stay.scan_start is not None:
-            events.append((stay.scan_start, 1, patient.id, f'{patient.id} scan starts'))
+            late = f' (LATE: waited {stay.scan_wait} min)' if stay.late_head_scan else ''
+            events.append((stay.scan_start, 1, patient.id, f'{patient.id} scan starts{late}'))
         if stay.drug_at is not None:
             events.append((stay.drug_at, 2, patient.id,
                            f'{patient.id} drug given ({stay.door_to_drug} min after arrival)'))
@@ -250,7 +285,11 @@ def table_rows(stays, clock):
     for stay in sorted(stays.values(), key=lambda s: (s.patient.arrival, s.patient.id)):
         patient = stay.patient
         notes = []
-        if patient.transferred_from:
+        if patient.kind == 'head':
+            notes.append(f'head injury, scan after {stay.scan_wait} min')
+            if stay.late_head_scan:
+                notes.append('SCAN LATE')
+        elif patient.transferred_from:
             notes.append(f'drug given at {patient.transferred_from}')
         elif stay.drug_at is None:
             if patient.drug_limit < patient.arrival:
@@ -276,3 +315,33 @@ def summary_line(stays):
         average = sum(s.door_to_drug for s in given) / len(given)
         text += f' Average door-to-drug: {int(average + 0.5)} min.'
     return text
+
+
+def head_summary(stays):
+    """The head injuries scanned late, or None when there are no head injuries."""
+    heads = [s for s in stays.values() if s.patient.kind == 'head']
+    if not heads:
+        return None
+    late = sorted(s.patient.id for s in heads if s.late_head_scan)
+    return 'Head scans late: ' + (', '.join(late) if late else 'none')
+
+
+def missed_ids(stays):
+    return sorted(s.patient.id for s in stays.values() if could_get_drug(s) and s.drug_at is None)
+
+
+def compare_rows(one, two):
+    """Bonus 2: the two mornings side by side, as table rows."""
+    def figures(stays):
+        eligible = [s for s in stays.values() if could_get_drug(s)]
+        given = [s for s in eligible if s.drug_at is not None]
+        average = f'{int(sum(s.door_to_drug for s in given) / len(given) + 0.5)} min' if given else '-'
+        slow = sorted(s.patient.id for s in given if s.door_to_drug > SLOW_OVER)
+        missed = missed_ids(stays)
+        late = head_summary(stays)
+        return [f'{len(given)} of {len(eligible)}', average, ', '.join(slow) or 'none',
+                ', '.join(missed) or 'none', None if late is None else late.split(': ', 1)[1]]
+    a, b = figures(one), figures(two)
+    labels = ['Drug given', 'Average door-to-drug', 'SLOW (over 60 min)', 'Missed the drug',
+              'Head scans late']
+    return [[label, x, y] for label, x, y in zip(labels, a, b) if x is not None]

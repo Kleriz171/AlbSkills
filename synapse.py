@@ -5,6 +5,7 @@ from loader import AtlasError, load_atlas
 import roadmap
 import routing
 import triage
+import unit
 from symptoms import SymptomError, load_symptoms
 
 DEFAULT_ATLAS = 'data/atlas.txt'
@@ -12,7 +13,7 @@ DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
 DEFAULT_ROADS = 'data/roads.txt'
 DEFAULT_HOSPITALS = 'data/hospitals.txt'
-UNIT_USAGE = 'Usage: unit run <file>'
+UNIT_USAGE = 'Usage: unit run <file> [--order deadline] [--scanners N]  |  unit compare <file> [--order deadline]'
 ROUTE_USAGE = 'Usage: route from <city> | <case id> | whatif <city> <ability>'
 MAP_USAGE = 'Usage: map load <path> | roads | hospitals | coverage'
 TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new | list | show <id> | update <id> | urgent'
@@ -191,13 +192,37 @@ def unit_command(state, args):
     if not args:
         raise ValueError(f'Missing subcommand. {UNIT_USAGE}')
     sub, rest = args[0], args[1:]
-    if sub != 'run':
+    if sub not in ('run', 'compare'):
         raise ValueError(f'Unknown unit command "{sub}". {UNIT_USAGE}')
+    order, scanners, words = 'fcfs', 1, []
+    index = 0
+    while index < len(rest):
+        word = rest[index]
+        if word in ('--order', '--scanners'):
+            if index + 1 >= len(rest):
+                raise ValueError(f'{word} needs a value. {UNIT_USAGE}')
+            value = rest[index + 1]
+            index += 2
+            if word == '--order':
+                if value not in unit.ORDERS:
+                    raise ValueError(f'Unknown order "{value}". Use {" or ".join(unit.ORDERS)}.')
+                order = value
+            else:
+                if not (value.isascii() and value.isdigit() and int(value) >= 1):
+                    raise ValueError(f'--scanners must be a whole number of 1 or more, found "{value}".')
+                scanners = int(value)
+        else:
+            words.append(word)
+            index += 1
+    rest = words
     if not rest:
-        raise ValueError('Missing file. Usage: unit run <file>')
+        raise ValueError(f'Missing file. {UNIT_USAGE}')
     if not state['cases_ok']:
         raise ValueError(f'{state["cases_path"]} could not be read, so the cases cannot be used.')
-    triage.run_unit(state, ' '.join(rest))
+    if sub == 'compare':
+        triage.compare_unit(state, ' '.join(rest), order)
+    else:
+        triage.run_unit(state, ' '.join(rest), order, scanners)
 
 
 def load_cases_command(state):
@@ -312,7 +337,7 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  help\n  exit')
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  unit run <file> [--order deadline] [--scanners N]\n  unit compare <file> [--order deadline]\n  help\n  exit')
         elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route', 'unit'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
                        'triage': triage_command, 'map': map_command, 'route': route_command, 'unit': unit_command}[words[0]]

@@ -770,7 +770,8 @@ def stay_to_dict(stay):
     }
 
 
-def run_unit(state, filename):
+def load_morning(state, filename):
+    """Read the file and the cases. Returns (from_file, from_cases, elsewhere), or None after an error."""
     """unit run <file>: replay the morning, print it, and save the times inside the cases."""
     taken = {case.id for case in state['cases']}
     try:
@@ -778,18 +779,41 @@ def run_unit(state, filename):
     except unit.UnitError as error:
         for message in error.messages:
             print(f'ERROR: {message}')
-        return
+        return None
     from_cases, notes, elsewhere = unit.patients_from_cases(state['cases'], parse_limit)
     for note in notes:                                   # a message; the morning still runs
         print(note)
-
-    patients = from_file + from_cases
-    if not patients:
+    if not from_file and not from_cases:
         print('No patients arrive this morning.')
-        return
+        return None
+    return from_file, from_cases, elsewhere
 
-    stays = unit.run_morning(patients)
-    print(f'{unit.UNIT_HOSPITAL} - 1 CT scanner - first come, first served')
+
+def compare_unit(state, filename, order='fcfs'):
+    """unit compare <file>: the same morning with 1 and with 2 scanners. Saves nothing."""
+    loaded = load_morning(state, filename)
+    if loaded is None:
+        return
+    from_file, from_cases, _ = loaded
+    patients = from_file + from_cases
+    one = unit.run_morning(patients, 1, unit.ORDERS[order])
+    two = unit.run_morning(patients, 2, unit.ORDERS[order])
+    print(f'{unit.UNIT_HOSPITAL} - {unit.ORDER_NAMES[order]} - nothing is saved')
+    print()
+    print_table(['', '1 SCANNER', '2 SCANNERS'], unit.compare_rows(one, two))
+
+
+def run_unit(state, filename, order='fcfs', scanners=1):
+    """unit run <file>: replay the morning, print it, and save the times inside the cases."""
+    loaded = load_morning(state, filename)
+    if loaded is None:
+        return
+    from_file, from_cases, elsewhere = loaded
+    patients = from_file + from_cases
+
+    stays = unit.run_morning(patients, scanners, unit.ORDERS[order])
+    scanner_text = f'{scanners} CT scanner' + ('s' if scanners != 1 else '')
+    print(f'{unit.UNIT_HOSPITAL} - {scanner_text} - {unit.ORDER_NAMES[order]}')
     detail = f'{len(patients)} patient{"" if len(patients) == 1 else "s"}: {len(from_file)} from {os.path.basename(filename)}, ' \
              f'{len(from_cases)} from your cases'
     if elsewhere:
@@ -804,6 +828,9 @@ def run_unit(state, filename):
                 unit.table_rows(stays, format_limit))
     print()
     print(unit.summary_line(stays))
+    heads = unit.head_summary(stays)
+    if heads:
+        print(heads)
 
     saved = [stay for stay in stays.values() if stay.patient.case is not None]
     if not saved:
