@@ -4,9 +4,12 @@ Every answer is checked as soon as it is typed. A wrong answer prints
 "ERROR: ..." and asks the SAME question again, so nothing typed before is lost.
 """
 
+import json
+import os
 import re
 
 import lesion
+from commands import print_table
 
 MAX_AGE = 120
 
@@ -41,7 +44,8 @@ class Case:
         self.drug_possible = False
         self.clot_until = 0
         self.clot_time_ok = False         # the time rule on its own
-        self.likely_pipe = None           # Pipe object, or None when unknown (Goal 4)
+        self.likely_pipe = None           # pipe NAME, or None when unknown (Goal 4)
+        self.big_pipe = False
         self.clot_possible = False        # time AND big pipe AND severity
 
 
@@ -143,7 +147,14 @@ def new_case(state):
     case = Case(case_id, name, age, city, now, last_seen, yesterday, symptoms)
     assess(case, known, state['atlas'])
     state['cases'].append(case)
-    print(f'SUCCESS: Case {case.id} created.')
+    try:
+        save_cases(state['cases_path'], state['cases'])
+    except OSError:
+        state['cases'].pop()                      # not saved = not created
+        state['next_case_number'] -= 1            # and its number was never given out
+        print(f'ERROR: Could not save the case to {state["cases_path"]}.')
+        return None
+    print(f'SUCCESS: Case {case.id} created and saved.')
     print_assessment(case)
     return case
 
@@ -197,16 +208,23 @@ def assess(case, known, atlas):
     case.severity = sum(known[code].points for code in case.symptoms)
     case.band = band_for(case.severity)
 
+    set_times(case)
+
+    pipe = find_likely_pipe(atlas, case.symptoms)
+    case.likely_pipe = pipe.name if pipe else None
+    case.big_pipe = pipe is not None and pipe.size == 'big'
+    case.clot_possible = (case.clot_time_ok and case.big_pipe
+                          and case.severity >= CLOT_MIN_SEVERITY)
+
+
+def set_times(case):
+    """The time limits depend only on the times typed, so they are worked out again
+    (never trusted from a file) whenever a case is built."""
     seen = timeline(case.last_seen, case.yesterday)
     case.drug_until = seen + DRUG_WINDOW
     case.drug_possible = case.now <= case.drug_until        # equal to the limit still counts
     case.clot_until = seen + CLOT_WINDOW
     case.clot_time_ok = case.now <= case.clot_until
-
-    case.likely_pipe = find_likely_pipe(atlas, case.symptoms)
-    big_pipe = case.likely_pipe is not None and case.likely_pipe.size == 'big'
-    case.clot_possible = (case.clot_time_ok and big_pipe
-                          and case.severity >= CLOT_MIN_SEVERITY)
 
 
 def format_limit(moment):
@@ -239,7 +257,7 @@ def clot_text(case):
         return f'no, the time limit passed at {format_limit(case.clot_until)}'
     if case.likely_pipe is None:
         return 'no, the blocked pipe is unknown'
-    if case.likely_pipe.size != 'big':
+    if not case.big_pipe:
         return 'no, the blocked pipe is not big enough for the tool'
     return f'no, the severity is below {CLOT_MIN_SEVERITY}'
 
@@ -247,7 +265,7 @@ def clot_text(case):
 def pipe_text(case):
     if case.likely_pipe is None:
         return 'unknown, no single pipe matches these symptoms exactly'
-    return f'{case.likely_pipe.name} ({case.likely_pipe.size})'
+    return f'{case.likely_pipe} ({"big" if case.big_pipe else "small"})'
 
 
 def print_field(label, value):
@@ -259,3 +277,98 @@ def print_assessment(case):
     print_field('Likely blocked pipe', pipe_text(case))
     print_field('Drug possible', drug_text(case))
     print_field('Clot removal', clot_text(case))
+
+
+# --------------------------------------------- Goal 5: save, load, list and show
+
+class CaseFileError(Exception):
+    """The cases file exists but cannot be read."""
+
+
+def case_to_dict(case):
+    return {
+        'id': case.id,
+        'name': case.name,
+        'age': case.age,
+        'city': case.city,
+        'createdAt': format_time(case.now),
+        'lastSeenWell': format_time(case.last_seen),
+        'lastSeenWellYesterday': case.yesterday,
+        'symptoms': case.symptoms,
+        'severity': case.severity,
+        'band': case.band,
+        'likelyPipe': case.likely_pipe,
+        'bigPipe': case.big_pipe,
+        'drugUntil': format_limit(case.drug_until),
+        'drugPossible': case.drug_possible,
+        'clotUntil': format_limit(case.clot_until),
+        'clotPossible': case.clot_possible,
+    }
+
+
+def case_from_dict(data):
+    """Rebuild a Case. The inputs and the answers come from the file; the time
+    limits are recalculated from the inputs."""
+    case = Case(data['id'], data['name'], data['age'], data['city'],
+                parse_time(data['createdAt']), parse_time(data['lastSeenWell']),
+                data['lastSeenWellYesterday'], list(data['symptoms']))
+    case.severity = data['severity']
+    case.band = data['band']
+    case.likely_pipe = data['likelyPipe']
+    case.big_pipe = data['bigPipe']
+    case.clot_possible = data['clotPossible']
+    set_times(case)
+    return case
+
+
+def load_cases(path):
+    """Read every saved case. No file yet means no cases yet."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+        return [case_from_dict(item) for item in data['cases']]
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise CaseFileError(f'Could not read {path} ({error}).')
+
+
+def save_cases(path, cases):
+    """Write to a temporary file first, then swap it in, so a crash half way
+    through can never leave a half-written cases file."""
+    temporary = path + '.tmp'
+    with open(temporary, 'w', encoding='utf-8') as f:
+        json.dump({'cases': [case_to_dict(c) for c in cases]}, f, indent=4, ensure_ascii=False)
+    os.replace(temporary, path)
+
+
+def next_number(cases):
+    """One more than the highest id ever saved, so an id is never reused."""
+    numbers = [int(c.id[2:]) for c in cases if re.fullmatch(r'P-\d+', c.id)]
+    return max(numbers, default=0) + 1
+
+
+def show_list(cases):
+    if not cases:
+        print('No cases yet.')
+        return
+    rows = [[c.id, c.name, str(c.age), c.city, f'{c.severity} {c.band}', c.likely_pipe or 'unknown']
+            for c in cases]
+    print_table(['ID', 'NAME', 'AGE', 'CITY', 'SEVERITY', 'LIKELY PIPE'], rows)
+
+
+def show_case(cases, case_id):
+    for case in cases:
+        if case.id == case_id.upper():
+            break
+    else:
+        raise ValueError(f'No case called "{case_id}".')
+
+    seen = format_time(case.last_seen) + (' yesterday' if case.yesterday else '')
+    print(f'=== Case {case.id}: {case.name} ===')
+    print_field('Age', case.age)
+    print_field('City', case.city)
+    print_field('Created at', format_time(case.now))
+    print_field('Last seen well', seen)
+    print_field('Symptoms', ', '.join(case.symptoms))
+    print_assessment(case)

@@ -1,0 +1,25 @@
+{
+    "cases": [
+        {
+            "id": "P-0001",
+            "name": "Kleris",
+            "age": 18,
+            "city": "Tirana",
+            "createdAt": "13:59",
+            "lastSeenWell": "10:12",
+            "lastSeenWellYesterday": false,
+            "symptoms": [
+                "cannot-speak",
+                "cannot-understand"
+            ],
+            "severity": 4,
+            "band": "minor",
+            "likelyPipe": null,
+            "bigPipe": false,
+            "drugUntil": "14:42",
+            "drugPossible": true,
+            "clotUntil": "10:12 tomorrow",
+            "clotPossible": false
+        }
+    ]
+}

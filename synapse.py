@@ -7,7 +7,8 @@ from symptoms import SymptomError, load_symptoms
 
 DEFAULT_ATLAS = 'data/atlas.txt'
 DEFAULT_SYMPTOMS = 'data/symptoms.txt'
-TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new'
+DEFAULT_CASES = 'data/cases.json'
+TRIAGE_USAGE = 'Usage: triage load <path> | symptoms | new | list | show <id>'
 LESION_USAGE = 'Usage: lesion block <pipe>[, <pipe>...] | risk <area> | tree <pipe>'
 ATLAS_USAGE ='Usage: atlas load <path> | pipes | areas | show <name> | find <word> | tree | path <area>'
 
@@ -89,6 +90,22 @@ def load_symptoms_command(state, path):
     print(f'SUCCESS: Symptoms loaded from {path}: {len(symptoms)} symptoms.')
 
 
+def load_cases_command(state):
+    """Read the saved cases when the program starts. If the file is damaged we say so and
+    refuse to create new cases, so we can never overwrite it with an empty list."""
+    try:
+        cases = triage.load_cases(state['cases_path'])
+    except triage.CaseFileError as error:
+        state['cases_ok'] = False
+        print(f'ERROR: {error}')
+        print('New cases are disabled so the file is not overwritten. Fix or move it, then restart.')
+        return
+    state['cases'] = cases
+    state['next_case_number'] = triage.next_number(cases)
+    if cases:
+        print(f'Loaded {len(cases)} saved cases from {state["cases_path"]}.')
+
+
 def triage_command(state, args):
     """Handle everything after the word 'triage'."""
     if not args:
@@ -101,8 +118,16 @@ def triage_command(state, args):
         load_symptoms_command(state, ' '.join(rest))
         return
 
-    if sub not in ('symptoms', 'new'):
+    if sub not in ('symptoms', 'new', 'list', 'show'):
         raise ValueError(f'Unknown triage command "{sub}". {TRIAGE_USAGE}')
+    if sub == 'list':
+        triage.show_list(state['cases'])
+        return
+    if sub == 'show':
+        if not rest:
+            raise ValueError('Missing id. Usage: triage show <id>')
+        triage.show_case(state['cases'], ' '.join(rest))
+        return
     if state['symptoms'] is None:
         raise ValueError('No symptom list is loaded. Use: triage load <path>')
 
@@ -111,6 +136,8 @@ def triage_command(state, args):
     elif sub == 'new':
         if state['atlas'] is None:
             raise ValueError('No atlas is loaded. Use: atlas load <path>')
+        if not state['cases_ok']:
+            raise ValueError(f'{state["cases_path"]} could not be read, so no new case can be saved.')
         triage.new_case(state)
 
 
@@ -141,10 +168,12 @@ def lesion_command(state, args):
 
 def main():
     state = {'atlas': None, 'path': None, 'symptoms': None, 'symptoms_path': None,
-             'cases': [], 'next_case_number': 1}     # what the program currently remembers
+             'cases': [], 'next_case_number': 1,
+             'cases_path': DEFAULT_CASES, 'cases_ok': True}     # what the program currently remembers
     print('Synapse 1.0 - type "help" to see all commands')
     load_command(state, DEFAULT_ATLAS)        # the atlas loads when the program starts
     load_symptoms_command(state, DEFAULT_SYMPTOMS)   # so does the symptom list
+    load_cases_command(state)                 # and every saved case
 
     while True:
         try:
