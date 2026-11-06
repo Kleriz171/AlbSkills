@@ -82,8 +82,27 @@
             "clotUntil": "14:00 tomorrow",
             "clotPossible": false,
             "history": [],
-            "route": null,
-            "hospitalStay": null
+            "route": {
+                "plan": "straight",
+                "goal": "drug",
+                "hospital": "Qendra Neuro Tirana",
+                "path": [
+                    "Tirana"
+                ],
+                "driveMinutes": 10,
+                "leaves": "14:48",
+                "arrives": "14:58",
+                "drugAt": "15:28",
+                "clotRemovalAt": null
+            },
+            "hospitalStay": {
+                "hospital": "Qendra Neuro Tirana",
+                "arrives": "14:58",
+                "scanAt": "14:58",
+                "drugAt": "15:28",
+                "doorToDrugMinutes": 30,
+                "clotRemovalAt": null
+            }
         },
         {
             "id": "P-0003",
@@ -350,7 +369,7 @@
                 "scanAt": "10:55",
                 "drugAt": "11:25",
                 "doorToDrugMinutes": 35,
-                "clotRemovalAt": "12:25"
+                "clotRemovalAt": "12:40"
             }
         },
         {

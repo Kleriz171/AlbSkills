@@ -6,9 +6,12 @@ import roadmap
 import routing
 import triage
 import unit
+from norms import NormError, load_norms
 from symptoms import SymptomError, load_symptoms
 
 DEFAULT_ATLAS = 'data/atlas.txt'
+DEFAULT_NORMS = 'data/norms.txt'
+CLINIC_USAGE = 'Usage: clinic load <path> | norms'
 DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
 DEFAULT_ROADS = 'data/roads.txt'
@@ -96,6 +99,42 @@ def load_symptoms_command(state, path):
     state['symptoms'] = symptoms
     state['symptoms_path'] = path
     print(f'SUCCESS: Symptoms loaded from {path}: {len(symptoms)} symptoms.')
+
+
+def load_norms_command(state, path):
+    """Try to load the normal values. If anything is wrong, keep the old ones (all or nothing)."""
+    try:
+        norms = load_norms(path)
+    except NormError as error:
+        for message in error.messages:
+            print(f'ERROR: {message}')
+        if state['norms_path']:
+            print(f'Normal values not loaded. Still using {state["norms_path"]}.')
+        else:
+            print('Normal values not loaded.')
+        return
+
+    state['norms'] = norms
+    state['norms_path'] = path
+    bands = sum(len(found) for found in norms.values())
+    print(f'SUCCESS: Normal values loaded from {path}: {bands} age bands.')
+
+
+def clinic_command(state, args):
+    """Handle everything after the word 'clinic'. (load and norms are not in the PDF: added for testing.)"""
+    if not args:
+        raise ValueError(f'Missing subcommand. {CLINIC_USAGE}')
+    sub, rest = args[0], args[1:]
+    if sub == 'load':
+        if not rest:
+            raise ValueError('Missing path. Usage: clinic load <path>')
+        load_norms_command(state, ' '.join(rest))
+    elif sub == 'norms':
+        if state['norms'] is None:
+            raise ValueError('No normal values are loaded.')
+        commands.show_norms(state['norms'])
+    else:
+        raise ValueError(f'Unknown clinic command "{sub}". {CLINIC_USAGE}')
 
 
 def load_map_command(state, path):
@@ -316,13 +355,15 @@ def main():
     state = {'atlas': None, 'path': None, 'symptoms': None, 'symptoms_path': None,
              'cases': [], 'next_case_number': 1,
              'cases_path': DEFAULT_CASES, 'cases_ok': True,
-             'roads': None, 'roads_path': None, 'hospitals': [], 'hospitals_path': None}     # what the program currently remembers
+             'roads': None, 'roads_path': None, 'hospitals': [], 'hospitals_path': None,
+             'norms': None, 'norms_path': None}     # what the program currently remembers
     print('Synapse 1.0 - type "help" to see all commands')
     load_command(state, DEFAULT_ATLAS)        # the atlas loads when the program starts
     load_symptoms_command(state, DEFAULT_SYMPTOMS)   # so does the symptom list
     load_cases_command(state)                 # and every saved case
     load_map_command(state, DEFAULT_ROADS)    # and the map: roads first,
     load_map_command(state, DEFAULT_HOSPITALS)   # then hospitals (they need the roads)
+    load_norms_command(state, DEFAULT_NORMS)  # and the clinic's normal values
 
     while True:
         try:
@@ -337,10 +378,11 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  unit run <file> [--order deadline] [--scanners N]\n  unit compare <file> [--order deadline]\n  help\n  exit')
-        elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route', 'unit'):
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  unit run <file> [--order deadline] [--scanners N]\n  unit compare <file> [--order deadline]\n  clinic load <path>\n  clinic norms\n  help\n  exit')
+        elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route', 'unit', 'clinic'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
-                       'triage': triage_command, 'map': map_command, 'route': route_command, 'unit': unit_command}[words[0]]
+                       'triage': triage_command, 'map': map_command, 'route': route_command, 'unit': unit_command,
+                       'clinic': clinic_command}[words[0]]
             try:
                 handler(state, words[1:])
             except ValueError as error:       # a mistake by the user, not a crash

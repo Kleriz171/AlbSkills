@@ -17,6 +17,14 @@ def print_table(header, rows):
         print('  '.join(cells).rstrip())
 
 
+def show_norms(norms):
+    """Mission 6, Goal 1: clinic norms. One row per age band, grouped by test."""
+    rows = [[test, f'{norm.from_age}-{norm.to_age}', norm.average_text, norm.spread_text]
+            for test, bands in norms.items() for norm in bands]
+    print_table(['TEST', 'AGES', 'NORMAL AVERAGE', 'SPREAD'], rows)
+    print(f'{len(rows)} age bands')
+
+
 def names(items):
     """[pipe, pipe] -> 'name1, name2'   (or 'none' when the list is empty)"""
     return ', '.join(item.name for item in items) or 'none'
