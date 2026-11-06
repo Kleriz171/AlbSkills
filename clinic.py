@@ -3,6 +3,8 @@
   clinic visit <case id>    ask the days, run the three tests, save the visit
   clinic record <case id>   ask the days and the three results typed in by hand
   clinic results <case id>  every visit, oldest first, each result rated against the norms
+  clinic check <case id>    Bonus 2: flags a weak result the damage does not explain, or a test getting worse
+  clinic chart <case id> <test>   Bonus 3: one bar per visit
 
 A saved visit looks like this inside the case:
   { "day": 14, "reactionMs": 540, "memoryDigits": 4, "colorWordSeconds": 31.0 }
@@ -14,6 +16,7 @@ from fractions import Fraction
 
 import braintests
 import commands
+import lesion
 import triage
 from norms import norm_for
 
@@ -22,6 +25,13 @@ NUMBER = re.compile(r'\d+(\.\d+)?')
 # The rule of Goal 4, in one place: how many SPREADS worse than the normal average?
 NORMAL_UP_TO = 1                # up to 1 spread worse (or better than the average): normal
 BELOW_UP_TO = 2                 # more than 1 and up to 2: below normal. More than 2: well below normal
+
+# Bonus 2: the areas whose damage explains a weak result in each test (the table in the PDF)
+EXPLAINED_BY = {
+    'reaction': ('right-arm-face', 'awake'),                  # pressed with the right hand
+    'memory': ('memory', 'understanding'),
+    'colorword': ('understanding', 'left-attention', 'right-vision', 'left-vision'),
+}
 
 # where each test's number sits inside a saved visit
 FIELDS = {'reaction': 'reactionMs', 'memory': 'memoryDigits', 'colorword': 'colorWordSeconds'}
@@ -200,3 +210,124 @@ def show_results(state, case_id):
             row.append(f'{text.ljust(width)}  {rating}'.rstrip())
         rows.append(row)
     commands.print_table(['DAY'] + [test.short.upper() for test in braintests.ALL_TESTS], rows)
+    trends = trends_of(visits)
+    if trends:                                                         # Bonus 1: needs two visits
+        names = ', '.join(f'{test.short} {trends[test.key]}' for test in braintests.ALL_TESTS)
+        print(f'Trend, day {visits[-2]["day"]} to day {visits[-1]["day"]}: {names}')
+
+
+# --------------------------------------------------------------- Bonus 1: trend
+
+def trend_of(test_class, before, now):
+    """'improving', 'worse' or 'steady' for the last two results of one test.
+    Reaction time and colour words: more than 5% lower is improving, more than 5% higher is worse.
+    Memory span: higher is improving, lower is worse. Both are one rule: the change must beat
+    trend_percent (5, or 0 for memory) in the right direction. Exact fractions again."""
+    before, now = Fraction(str(before)), Fraction(str(now))
+    margin = Fraction(test_class.trend_percent, 100)
+    if now > before * (1 + margin):
+        return 'improving' if test_class.higher_is_better else 'worse'
+    if now < before * (1 - margin):
+        return 'worse' if test_class.higher_is_better else 'improving'
+    return 'steady'
+
+
+def trends_of(visits):
+    """{test key: trend} comparing the last two visits (oldest first), or {} with fewer than two."""
+    if len(visits) < 2:
+        return {}
+    before, now = visits[-2], visits[-1]
+    return {test.key: trend_of(test, before[FIELDS[test.key]], now[FIELDS[test.key]])
+            for test in braintests.ALL_TESTS}
+
+
+# ------------------------------------------------- Bonus 2: does it match the damage?
+
+def damaged_areas(state, case):
+    """(names of the areas that stopped working, the text of the Damage line).
+    The damage is what the Mission 2 engine says for the pipe that was found for this case."""
+    if case.likely_pipe is None:
+        return [], f'Damage: no blocked pipe is known for {case.id}.'
+    if state['atlas'] is None:
+        raise ValueError('No atlas is loaded, so the damage cannot be worked out. Use: atlas load <path>')
+    pipe = state['atlas'].get_pipe(case.likely_pipe)
+    if pipe is None:
+        raise ValueError(f'The pipe "{case.likely_pipe}" of {case.id} is not in the loaded atlas.')
+    result = lesion.simulate(state['atlas'], [pipe])
+    names = [area.name for area in result.dead_areas]
+    if not names:
+        return names, f'Damage: {pipe.name} blocked -> no area stopped working'
+    return names, f'Damage: {pipe.name} blocked -> {", ".join(names)} stopped working'
+
+
+def check_case(state, case_id):
+    """clinic check <id>: flag a latest result that is below normal but not explained by the
+    damage, and any test that is getting worse. Either one can mean a new stroke."""
+    case = triage.find_case(state['cases'], case_id)
+    if not case.visits:
+        print(f'Case {case.id} has no visits yet.')
+        return
+    bands = norms_for_case(state, case)
+    dead, damage_line = damaged_areas(state, case)
+    visits = sorted(case.visits, key=lambda visit: visit['day'])
+    latest = visits[-1]
+    trends = trends_of(visits)
+
+    print(damage_line)
+    rows, flags = [], []
+    for test in braintests.ALL_TESTS:
+        value = latest[FIELDS[test.key]]
+        rating = rate_result(bands[test.key], test, value)
+        expected = any(area in dead for area in EXPLAINED_BY[test.key])
+        trend = trends.get(test.key, '-')
+        name = test.short.capitalize()
+        rows.append([name, f'{show_value(test, value)}  {rating}', trend, 'yes' if expected else 'no'])
+        verb = 'are' if name.endswith('s') else 'is'                   # "Colour words are", "Memory is"
+        if rating != 'normal' and not expected:
+            flags.append(f'FLAG: {name} {verb} {rating} normal, and the damage does not explain it.')
+        if trend == 'worse':
+            flags.append(f'FLAG: {name} {verb} getting worse since day {visits[-2]["day"]}.')
+    commands.print_table(['TEST', f'DAY {latest["day"]}', 'TREND', 'EXPECTED WEAK'], rows)
+    if not flags:
+        print('No flags.')
+        return
+    for flag in flags:
+        print(flag)
+    print('Advice: check the patient for a new stroke.')
+
+
+# --------------------------------------------------------------- Bonus 3: chart
+
+def find_test(typed):
+    """The test class for what was typed: reaction, memory, colorword, colour words, ..."""
+    simple = typed.strip().lower().replace(' ', '').replace('-', '').replace('_', '')
+    for test in braintests.ALL_TESTS:
+        names = {test.key, test.short.replace(' ', ''), test.title.replace(' ', '')}
+        if simple in names or (test.key == 'colorword' and simple in ('color', 'colour', 'colorwords')):
+            return test
+    raise ValueError(f'Unknown test "{typed}". Expected reaction, memory or colorword.')
+
+
+def half_up_whole(value):
+    return int(value + Fraction(1, 2))
+
+
+def chart_case(state, case_id, typed_test):
+    """clinic chart <id> <test>: one bar per visit, one # per chart_unit, rounded to the nearest #."""
+    test = find_test(typed_test)
+    case = triage.find_case(state['cases'], case_id)
+    if not case.visits:
+        print(f'Case {case.id} has no visits yet.')
+        return
+    norm = norms_for_case(state, case)[test.key]
+    low, high = norm.average - norm.spread, norm.average + norm.spread
+    direction = 'higher' if test.higher_is_better else 'lower'
+    print(f'{test.title.capitalize()} - {direction} is better - normal for age {case.age}: '
+          f'{number_text(low, test.decimals)} to {number_text(high, test.decimals)} {test.unit}')
+
+    visits = sorted(case.visits, key=lambda visit: visit['day'])
+    bars = [half_up_whole(Fraction(str(visit[FIELDS[test.key]])) / test.chart_unit) for visit in visits]
+    labels = [f'Day {visit["day"]}' for visit in visits]
+    for visit, label, bar in zip(visits, labels, bars):
+        print(f'{label.ljust(max(map(len, labels)))}  {("#" * bar).ljust(max(bars))}  '
+              f'{show_value(test, visit[FIELDS[test.key]])}'.rstrip())

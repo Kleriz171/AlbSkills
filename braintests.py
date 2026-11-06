@@ -96,6 +96,8 @@ class BrainTest:
     decimals = 0                    # at least this many decimals when showing a normal average
     result_decimals = 0             # the same for a patient's result
     higher_is_better = False        # False: a bigger number is WORSE (slower)
+    trend_percent = 5               # Bonus 1: a change must beat this many % to count as better or worse
+    chart_unit = 1                  # Bonus 3: this much of the result is one # in the chart
     instructions = ''
 
     def __init__(self, io=None):
@@ -111,6 +113,7 @@ class ReactionTest(BrainTest):
     title = 'reaction time'
     short = 'reaction'
     unit = unit_one = 'ms'
+    chart_unit = 20                 # one # per 20 ms
     instructions = f'Press ENTER as soon as you see *   ({REACTION_ROUNDS} rounds)'
 
     def run(self):
@@ -142,6 +145,7 @@ class MemoryTest(BrainTest):
     unit, unit_one = 'digits', 'digit'
     decimals = 1                    # averages are shown as 6.0, not 6
     higher_is_better = True
+    trend_percent = 0               # memory is better if higher and worse if lower, with no margin
     instructions = 'Remember the digits. They disappear after a moment.'
 
     def new_row(self, length):
