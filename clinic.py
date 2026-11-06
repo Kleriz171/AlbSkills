@@ -160,6 +160,12 @@ def rate_result(norm, test_class, value):
     return 'well below'
 
 
+def visit_ratings(bands, visit):
+    """{test key: rating} for one visit. 'bands' comes from norms_for_case."""
+    return {test.key: rate_result(bands[test.key], test, visit[FIELDS[test.key]])
+            for test in braintests.ALL_TESTS}
+
+
 def norms_for_case(state, case):
     """{test key: Norm} for the age of this patient. Raises ValueError when there is none."""
     if state['norms'] is None:
@@ -178,8 +184,8 @@ def norms_line(case, bands):
         parts.append(text if one_range else f'{text} (ages {norm.from_age}-{norm.to_age})')
     if one_range:
         low, high = next(iter(ranges))
-        return f'{case.name}, {case.age} - normal for ages {low}-{high}: ' + ', '.join(parts)
-    return f'{case.name}, {case.age} - normal values: ' + ', '.join(parts)
+        return f'{case.name}, {case.age}{commands.dot()}normal for ages {low}-{high}: ' + ', '.join(parts)
+    return f'{case.name}, {case.age}{commands.dot()}normal values: ' + ', '.join(parts)
 
 
 def show_results(state, case_id):
@@ -260,20 +266,17 @@ def damaged_areas(state, case):
     return names, f'Damage: {pipe.name} blocked -> {", ".join(names)} stopped working'
 
 
-def check_case(state, case_id):
-    """clinic check <id>: flag a latest result that is below normal but not explained by the
-    damage, and any test that is getting worse. Either one can mean a new stroke."""
-    case = triage.find_case(state['cases'], case_id)
+def check_report(state, case):
+    """(Damage line, table rows, flags, latest day) for clinic check, or None when the case has no visits.
+    Raises ValueError when the norms or the damage cannot be worked out."""
     if not case.visits:
-        print(f'Case {case.id} has no visits yet.')
-        return
+        return None
     bands = norms_for_case(state, case)
     dead, damage_line = damaged_areas(state, case)
     visits = sorted(case.visits, key=lambda visit: visit['day'])
     latest = visits[-1]
     trends = trends_of(visits)
 
-    print(damage_line)
     rows, flags = [], []
     for test in braintests.ALL_TESTS:
         value = latest[FIELDS[test.key]]
@@ -287,7 +290,20 @@ def check_case(state, case_id):
             flags.append(f'FLAG: {name} {verb} {rating} normal, and the damage does not explain it.')
         if trend == 'worse':
             flags.append(f'FLAG: {name} {verb} getting worse since day {visits[-2]["day"]}.')
-    commands.print_table(['TEST', f'DAY {latest["day"]}', 'TREND', 'EXPECTED WEAK'], rows)
+    return damage_line, rows, flags, latest['day']
+
+
+def check_case(state, case_id):
+    """clinic check <id>: flag a latest result that is below normal but not explained by the
+    damage, and any test that is getting worse. Either one can mean a new stroke."""
+    case = triage.find_case(state['cases'], case_id)
+    report = check_report(state, case)
+    if report is None:
+        print(f'Case {case.id} has no visits yet.')
+        return
+    damage_line, rows, flags, day = report
+    print(damage_line)
+    commands.print_table(['TEST', f'DAY {day}', 'TREND', 'EXPECTED WEAK'], rows)
     if not flags:
         print('No flags.')
         return
@@ -322,7 +338,8 @@ def chart_case(state, case_id, typed_test):
     norm = norms_for_case(state, case)[test.key]
     low, high = norm.average - norm.spread, norm.average + norm.spread
     direction = 'higher' if test.higher_is_better else 'lower'
-    print(f'{test.title.capitalize()} - {direction} is better - normal for age {case.age}: '
+    dot = commands.dot()
+    print(f'{test.title.capitalize()}{dot}{direction} is better{dot}normal for age {case.age}: '
           f'{number_text(low, test.decimals)} to {number_text(high, test.decimals)} {test.unit}')
 
     visits = sorted(case.visits, key=lambda visit: visit['day'])

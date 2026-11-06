@@ -5,7 +5,18 @@ A user mistake raises ValueError; synapse.py prints it as "ERROR: ...".
 """
 
 
+import sys
+
 import lesion
+
+
+def dot():
+    """The ' · ' that separates parts of a line. A plain ' - ' on a screen that cannot show the dot."""
+    try:
+        '\u00b7'.encode(sys.stdout.encoding or 'ascii')
+        return ' \u00b7 '
+    except (UnicodeEncodeError, LookupError):
+        return ' - '
 
 
 def print_table(header, rows):

@@ -7,12 +7,14 @@ import routing
 import triage
 import unit
 import braintests
+import casefile
 import clinic
 from norms import NormError, load_norms
 from symptoms import SymptomError, load_symptoms
 
 DEFAULT_ATLAS = 'data/atlas.txt'
 DEFAULT_NORMS = 'data/norms.txt'
+CASE_USAGE = 'Usage: case <case id> | find <text> | export <case id> | board | cost <case id>'
 CLINIC_USAGE = 'Usage: clinic visit <case id> | record <case id> | results <case id> | check <case id> | chart <case id> <test> | load <path> | norms | test <reaction|memory|colorword>'
 DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
@@ -120,6 +122,28 @@ def load_norms_command(state, path):
     state['norms_path'] = path
     bands = sum(len(found) for found in norms.values())
     print(f'SUCCESS: Normal values loaded from {path}: {bands} age bands.')
+
+
+def case_command(state, args):
+    """Handle everything after the word 'case'. (Mission 7: one command, one patient, the whole journey.)"""
+    if not args:
+        raise ValueError('Missing case id. Usage: case <case id>')
+    if not state['cases_ok']:
+        raise ValueError(f'The database file {state["cases_path"]} is damaged. No cases loaded.')
+    sub, rest = args[0].lower(), args[1:]
+    try:
+        if sub == 'find':
+            casefile.find_cases(state, ' '.join(rest))
+        elif sub == 'board':
+            casefile.show_board(state)
+        elif sub in ('export', 'cost'):
+            if not rest:
+                raise ValueError(f'Missing case id. Usage: case {sub} <case id>')
+            (casefile.export_case if sub == 'export' else casefile.cost_case)(state, ' '.join(rest))
+        else:
+            casefile.show_case(state, ' '.join(args))        # anything else is a case id: case P-0001
+    except EOFError:
+        print()
 
 
 def clinic_command(state, args):
@@ -411,11 +435,11 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  unit run <file> [--order deadline] [--scanners N]\n  unit compare <file> [--order deadline]\n  clinic visit <case id>\n  clinic record <case id>\n  clinic results <case id>\n  clinic check <case id>\n  clinic chart <case id> <test>\n  clinic load <path>\n  clinic norms\n  clinic test <reaction|memory|colorword>\n  help\n  exit')
-        elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route', 'unit', 'clinic'):
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  unit run <file> [--order deadline] [--scanners N]\n  unit compare <file> [--order deadline]\n  clinic visit <case id>\n  clinic record <case id>\n  clinic results <case id>\n  clinic check <case id>\n  clinic chart <case id> <test>\n  case <case id>\n  case find <text>\n  case export <case id>\n  case board\n  case cost <case id>\n  clinic load <path>\n  clinic norms\n  clinic test <reaction|memory|colorword>\n  help\n  exit')
+        elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route', 'unit', 'clinic', 'case'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
                        'triage': triage_command, 'map': map_command, 'route': route_command, 'unit': unit_command,
-                       'clinic': clinic_command}[words[0]]
+                       'clinic': clinic_command, 'case': case_command}[words[0]]
             try:
                 handler(state, words[1:])
             except ValueError as error:       # a mistake by the user, not a crash

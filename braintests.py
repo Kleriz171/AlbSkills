@@ -96,6 +96,7 @@ class BrainTest:
     decimals = 0                    # at least this many decimals when showing a normal average
     result_decimals = 0             # the same for a patient's result
     higher_is_better = False        # False: a bigger number is WORSE (slower)
+    unit_in_case_file = True        # Mission 7 prints memory as a bare number: 'memory 4'
     trend_percent = 5               # Bonus 1: a change must beat this many % to count as better or worse
     chart_unit = 1                  # Bonus 3: this much of the result is one # in the chart
     instructions = ''
@@ -146,6 +147,7 @@ class MemoryTest(BrainTest):
     decimals = 1                    # averages are shown as 6.0, not 6
     higher_is_better = True
     trend_percent = 0               # memory is better if higher and worse if lower, with no margin
+    unit_in_case_file = False
     instructions = 'Remember the digits. They disappear after a moment.'
 
     def new_row(self, length):
