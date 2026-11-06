@@ -43,7 +43,15 @@
                 "drugAt": "14:39",
                 "doorToDrugMinutes": 30,
                 "clotRemovalAt": null
-            }
+            },
+            "visits": [
+                {
+                    "day": 30,
+                    "reactionMs": 32,
+                    "memoryDigits": 6,
+                    "colorWordSeconds": 22.0
+                }
+            ]
         },
         {
             "id": "P-0002",
@@ -102,7 +110,8 @@
                 "drugAt": "15:28",
                 "doorToDrugMinutes": 30,
                 "clotRemovalAt": null
-            }
+            },
+            "visits": []
         },
         {
             "id": "P-0003",
@@ -142,7 +151,8 @@
                 "drugAt": "08:25",
                 "clotRemovalAt": null
             },
-            "hospitalStay": null
+            "hospitalStay": null,
+            "visits": []
         },
         {
             "id": "P-0004",
@@ -180,7 +190,8 @@
                 "drugAt": "09:55",
                 "clotRemovalAt": null
             },
-            "hospitalStay": null
+            "hospitalStay": null,
+            "visits": []
         },
         {
             "id": "P-0005",
@@ -219,7 +230,8 @@
                 "drugAt": "12:40",
                 "clotRemovalAt": null
             },
-            "hospitalStay": null
+            "hospitalStay": null,
+            "visits": []
         },
         {
             "id": "P-0006",
@@ -269,7 +281,8 @@
                 "drugAt": "16:25",
                 "doorToDrugMinutes": 30,
                 "clotRemovalAt": "16:55"
-            }
+            },
+            "visits": []
         },
         {
             "id": "P-0007",
@@ -318,7 +331,8 @@
                 "drugAt": null,
                 "doorToDrugMinutes": null,
                 "clotRemovalAt": "09:40"
-            }
+            },
+            "visits": []
         },
         {
             "id": "P-0008",
@@ -370,7 +384,8 @@
                 "drugAt": "11:25",
                 "doorToDrugMinutes": 35,
                 "clotRemovalAt": "12:40"
-            }
+            },
+            "visits": []
         },
         {
             "id": "P-0009",
@@ -421,7 +436,8 @@
                 "drugAt": "10:40",
                 "clotRemovalAt": null
             },
-            "hospitalStay": null
+            "hospitalStay": null,
+            "visits": []
         },
         {
             "id": "P-0010",
@@ -466,7 +482,8 @@
                 "drugAt": "10:40",
                 "doorToDrugMinutes": 40,
                 "clotRemovalAt": null
-            }
+            },
+            "visits": []
         }
     ]
 }

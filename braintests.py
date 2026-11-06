@@ -90,6 +90,12 @@ class BrainTest:
     """What every test has in common."""
     key = ''                        # the test name used in norms.txt
     title = ''                      # "reaction time"
+    short = ''                      # the name in tables: "reaction"
+    unit = ''                       # shown after a number: "ms"
+    unit_one = ''                   # the same unit for exactly 1 ("digit")
+    decimals = 0                    # at least this many decimals when showing a normal average
+    result_decimals = 0             # the same for a patient's result
+    higher_is_better = False        # False: a bigger number is WORSE (slower)
     instructions = ''
 
     def __init__(self, io=None):
@@ -103,6 +109,8 @@ class BrainTest:
 class ReactionTest(BrainTest):
     key = 'reaction'
     title = 'reaction time'
+    short = 'reaction'
+    unit = unit_one = 'ms'
     instructions = f'Press ENTER as soon as you see *   ({REACTION_ROUNDS} rounds)'
 
     def run(self):
@@ -130,6 +138,10 @@ class ReactionTest(BrainTest):
 class MemoryTest(BrainTest):
     key = 'memory'
     title = 'memory span'
+    short = 'memory'
+    unit, unit_one = 'digits', 'digit'
+    decimals = 1                    # averages are shown as 6.0, not 6
+    higher_is_better = True
     instructions = 'Remember the digits. They disappear after a moment.'
 
     def new_row(self, length):
@@ -162,6 +174,10 @@ class MemoryTest(BrainTest):
 class ColourWordsTest(BrainTest):
     key = 'colorword'
     title = 'colour words'
+    short = 'colour words'
+    unit = unit_one = 's'
+    decimals = 1                    # seconds are shown with one decimal: 18.0
+    result_decimals = 1             # a result is the total seconds, with one decimal: 22.0
     instructions = ('Type the first letter of the COLOUR of each word, not the word: '
                     + ', '.join(ANSWER_KEYS) + '.')
 

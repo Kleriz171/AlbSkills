@@ -13,7 +13,7 @@ from symptoms import SymptomError, load_symptoms
 
 DEFAULT_ATLAS = 'data/atlas.txt'
 DEFAULT_NORMS = 'data/norms.txt'
-CLINIC_USAGE = 'Usage: clinic visit <case id> | record <case id> | load <path> | norms | test <reaction|memory|colorword>'
+CLINIC_USAGE = 'Usage: clinic visit <case id> | record <case id> | results <case id> | load <path> | norms | test <reaction|memory|colorword>'
 DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
 DEFAULT_ROADS = 'data/roads.txt'
@@ -135,6 +135,10 @@ def clinic_command(state, args):
         if state['norms'] is None:
             raise ValueError('No normal values are loaded.')
         commands.show_norms(state['norms'])
+    elif sub == 'results':
+        if not rest:
+            raise ValueError('Missing case id. Usage: clinic results <case id>')
+        clinic.show_results(state, ' '.join(rest))
     elif sub in ('visit', 'record'):
         if not rest:
             raise ValueError(f'Missing case id. Usage: clinic {sub} <case id>')
@@ -399,7 +403,7 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  unit run <file> [--order deadline] [--scanners N]\n  unit compare <file> [--order deadline]\n  clinic visit <case id>\n  clinic record <case id>\n  clinic load <path>\n  clinic norms\n  clinic test <reaction|memory|colorword>\n  help\n  exit')
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  unit run <file> [--order deadline] [--scanners N]\n  unit compare <file> [--order deadline]\n  clinic visit <case id>\n  clinic record <case id>\n  clinic results <case id>\n  clinic load <path>\n  clinic norms\n  clinic test <reaction|memory|colorword>\n  help\n  exit')
         elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route', 'unit', 'clinic'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
                        'triage': triage_command, 'map': map_command, 'route': route_command, 'unit': unit_command,
