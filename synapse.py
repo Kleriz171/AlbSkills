@@ -6,12 +6,13 @@ import roadmap
 import routing
 import triage
 import unit
+import braintests
 from norms import NormError, load_norms
 from symptoms import SymptomError, load_symptoms
 
 DEFAULT_ATLAS = 'data/atlas.txt'
 DEFAULT_NORMS = 'data/norms.txt'
-CLINIC_USAGE = 'Usage: clinic load <path> | norms'
+CLINIC_USAGE = 'Usage: clinic load <path> | norms | test <reaction|memory|colorword>'
 DEFAULT_SYMPTOMS = 'data/symptoms.txt'
 DEFAULT_CASES = 'data/cases.json'
 DEFAULT_ROADS = 'data/roads.txt'
@@ -121,7 +122,7 @@ def load_norms_command(state, path):
 
 
 def clinic_command(state, args):
-    """Handle everything after the word 'clinic'. (load and norms are not in the PDF: added for testing.)"""
+    """Handle everything after the word 'clinic'. (load, norms and test are not in the PDF: added for testing.)"""
     if not args:
         raise ValueError(f'Missing subcommand. {CLINIC_USAGE}')
     sub, rest = args[0], args[1:]
@@ -133,6 +134,16 @@ def clinic_command(state, args):
         if state['norms'] is None:
             raise ValueError('No normal values are loaded.')
         commands.show_norms(state['norms'])
+    elif sub == 'test':
+        by_key = {test.key: test for test in braintests.ALL_TESTS}
+        if not rest:
+            raise ValueError('Missing test. Usage: clinic test <reaction|memory|colorword>')
+        if rest[0] not in by_key:
+            raise ValueError(f'Unknown test "{rest[0]}". Expected {", ".join(by_key)}.')
+        try:
+            by_key[rest[0]]().run()                 # plays one test by hand and prints its result
+        except EOFError:
+            print()
     else:
         raise ValueError(f'Unknown clinic command "{sub}". {CLINIC_USAGE}')
 
@@ -378,7 +389,7 @@ def main():
             break
         elif words[0] == 'help':
             print('Commands:\n  atlas load <path>\n  atlas pipes\n  atlas areas\n'
-                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  unit run <file> [--order deadline] [--scanners N]\n  unit compare <file> [--order deadline]\n  clinic load <path>\n  clinic norms\n  help\n  exit')
+                  '  atlas show <name>\n  atlas find <word>\n  atlas tree\n  atlas path <area>\n  lesion block <pipe>\n  lesion risk <area>\n  lesion tree <pipe>\n  triage symptoms\n  triage new\n  triage list\n  triage show <id>\n  triage update <id>\n  triage urgent\n  triage load <path>\n  map load <path>\n  map roads\n  map hospitals\n  map coverage\n  route from <city>\n  route <case id>\n  route whatif <city> <ability>\n  unit run <file> [--order deadline] [--scanners N]\n  unit compare <file> [--order deadline]\n  clinic load <path>\n  clinic norms\n  clinic test <reaction|memory|colorword>\n  help\n  exit')
         elif words[0] in ('atlas', 'lesion', 'triage', 'map', 'route', 'unit', 'clinic'):
             handler = {'atlas': atlas_command, 'lesion': lesion_command,
                        'triage': triage_command, 'map': map_command, 'route': route_command, 'unit': unit_command,
