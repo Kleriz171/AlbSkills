@@ -44,6 +44,7 @@ class Case:
         self.history = []                 # Bonus 2: one entry per update
         self.route = None                 # Mission 4: the saved route (a dict), or None
         self.hospital_stay = None         # Mission 5: the hospital times (a dict), or None
+        self.visits = []                  # Mission 6: clinic visits, oldest first (a list of dicts)
         self.last_seen = last_seen        # minutes after midnight, today or yesterday
         self.yesterday = yesterday        # True when last_seen was yesterday
         self.symptoms = symptoms          # list of codes, each one once, in typed order
@@ -358,6 +359,7 @@ def case_to_dict(case):
         'history': case.history,
         'route': case.route,
         'hospitalStay': case.hospital_stay,
+        'visits': case.visits,
     }
 
 
@@ -378,6 +380,7 @@ def case_from_dict(data):
     case.history = data.get('history', [])
     case.route = data.get('route')                          # absent before Mission 4
     case.hospital_stay = data.get('hospitalStay')           # absent before Mission 5
+    case.visits = data.get('visits', [])                    # absent before Mission 6
     set_times(case)
     return case
 
